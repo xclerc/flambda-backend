@@ -1077,7 +1077,7 @@ and transl_record ~scopes loc env fields repres opt_init_expr =
             match repres with
               Record_regular
             | Record_inlined _ ->
-                Psetfield(lbl.lbl_pos + 1, maybe_pointer expr, Assignment)
+                Psetfield(lbl.lbl_pos, maybe_pointer expr, Assignment)
             | Record_unboxed _ -> assert false
             | Record_float -> Psetfloatfield (lbl.lbl_pos, Assignment)
             | Record_extension _ ->
