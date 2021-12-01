@@ -548,27 +548,21 @@ let rec add_blocks :
       let handler_label = State.get_catch_handler state ~handler_id in
       terminate_block ~trap_actions
         (copy_instruction_no_reg state last ~desc:(Cfg.Always handler_label))
-    | Itrywith (body, Regular, (_trap_stack, handler)) ->
+    | Itrywith (body, kind, (_trap_stack, handler)) ->
       let label_body = Cmm.new_label () in
-      let label_handler = Cmm.new_label () in
+      let label_handler, starts_with_pushtrap =
+        match kind with
+        | Regular ->
+          let label = Cmm.new_label () in
+          label, Some label
+        | Delayed label -> label, None
+      in
       terminate_block ~trap_actions:[]
         (copy_instruction_no_reg state last ~desc:(Cfg.Always label_body));
       let next, add_next_block = prepare_next_block () in
       State.add_iend_with_poptrap state (get_end body);
       State.add_exception_handler state label_handler;
-      add_blocks body state ~starts_with_pushtrap:(Some label_handler)
-        ~start:label_body ~next;
-      add_blocks handler state ~starts_with_pushtrap:None ~start:label_handler
-        ~next;
-      add_next_block ()
-    | Itrywith (body, Delayed label_handler, (_trap_stack, handler)) ->
-      let label_body = Cmm.new_label () in
-      terminate_block ~trap_actions:[]
-        (copy_instruction_no_reg state last ~desc:(Cfg.Always label_body));
-      let next, add_next_block = prepare_next_block () in
-      State.add_iend_with_poptrap state (get_end body);
-      State.add_exception_handler state label_handler;
-      add_blocks body state ~starts_with_pushtrap:None ~start:label_body ~next;
+      add_blocks body state ~starts_with_pushtrap ~start:label_body ~next;
       add_blocks handler state ~starts_with_pushtrap:None ~start:label_handler
         ~next;
       add_next_block ()
