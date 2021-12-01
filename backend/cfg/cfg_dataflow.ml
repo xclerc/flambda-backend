@@ -69,7 +69,7 @@ module Forward (D : Domain) (T : Transfer with type domain = D.t) :
     in
     let normal, exceptional =
       transfer T.terminator
-        (ListLabels.fold_left block.body ~init:(value, value)
+        (ListLabels.fold_left block.body ~init:(value, D.bot)
            ~f:(transfer T.basic))
         block.terminator
     in
