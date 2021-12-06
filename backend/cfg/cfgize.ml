@@ -589,14 +589,14 @@ module Trap_depth_and_exns = struct
 
     let top =
       (* note: this is obviously wrong, but the value is not used since we pass
-         `~init` when calling `Cfg_dataflow.S.run`. *)
+         `~init` and `~init_handler` when calling `Cfg_dataflow.S.run`. *)
       Some []
 
     let bot = None
 
     let compare =
       Option.compare (fun left right ->
-          match List.compare_lengths left right with
+          match List.compare_lengths left right with (* XXX do we still need to compare the length? *)
           | 0 -> List.compare Label.compare left right
           | c -> c)
 
@@ -609,7 +609,15 @@ module Trap_depth_and_exns = struct
     let join left right =
       match left, right with
       | None, res | res, None -> res
-      | Some l, Some r -> if List.length l >= List.length r then left else right
+      | Some l, Some r ->
+        (* XXX should now l = r? *)
+        (*assert (List.compare Label.compare l r = 0);*)
+        if not (List.compare Label.compare l r = 0) then begin
+          Printf.eprintf "XXX left=%s\nright=%s\n%!"
+            (to_string left)
+            (to_string right)
+        end;
+        if List.length l >= List.length r then left else right
   end
 
   module Transfer : Cfg_dataflow.Transfer with type domain = Domain.t = struct
@@ -622,6 +630,11 @@ module Trap_depth_and_exns = struct
 
     let push hd tl = Some (hd :: tl)
 
+    (* XXX is it still the case?
+       it is probably still the case because of what we return in
+       basic>Pushtrap>exceptional and the fact we do not have the
+       "interprocedural" handler in the stack
+    *)
     (* note: we can be in a situation where we will try to pop from the empty
        stack, because handlers are in the initial working set and initialized
        with an empty stack. We can safely ignore such cases, since the block is
@@ -631,9 +644,7 @@ module Trap_depth_and_exns = struct
     let basic : domain -> Cfg.basic Cfg.instruction -> t =
      fun domain instr ->
       match domain with
-      | None ->
-        Misc.fatal_errorf
-          "Cfgize.Trap_depth_and_exns.Transfer.basic: unexpected `None` value."
+      | None -> { normal = None; exceptional = None; }
       | Some domain as old_domain -> (
         match instr.desc with
         | Pushtrap { lbl_handler } ->
@@ -647,10 +658,7 @@ module Trap_depth_and_exns = struct
     let terminator : domain -> Cfg.terminator Cfg.instruction -> t =
      fun domain term ->
       match domain with
-      | None ->
-        Misc.fatal_errorf
-          "Cfgize.Trap_depth_and_exns.Transfer.terminator: unexpected `None` \
-           value."
+      | None -> { normal = None; exceptional = None; }
       | Some domain as old_domain -> (
         match term.desc with
         | Never | Call_no_return _ | Return
@@ -696,7 +704,7 @@ module Trap_depth_and_exns = struct
 
   let update_cfg_step : Cfg.t -> unit =
    fun cfg ->
-    match Dataflow_forward.run cfg ~init:(Some []) () with
+    match Dataflow_forward.run cfg ~init:(Some []) ~init_handler:None () with
     | Result.Error _ ->
       Misc.fatal_errorf
         "Cfgize.Trap_depth_and_exns.update_cfg_step: fix-point could not be \
@@ -704,7 +712,7 @@ module Trap_depth_and_exns = struct
     | Result.Ok map ->
       Cfg.iter_blocks cfg ~f:(fun label block ->
           match Label.Tbl.find_opt map label with
-          | None | Some None -> block.trap_depth <- 1
+          | None | Some None -> ()
           | Some (Some stack as dom) ->
             let computed_exns : Label.Set.t = compute_exns block dom in
             block.trap_depth <- succ (List.length stack);

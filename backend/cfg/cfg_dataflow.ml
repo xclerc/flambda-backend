@@ -35,7 +35,7 @@ module type S = sig
   type map = domain Label.Tbl.t
 
   val run :
-    Cfg.t -> ?max_iteration:int -> ?init:domain -> unit -> (map, map) Result.t
+    Cfg.t -> ?max_iteration:int -> ?init:domain -> ?init_handler:domain -> unit -> (map, map) Result.t
 end
 
 module Forward (D : Domain) (T : Transfer with type domain = D.t) :
@@ -75,16 +75,25 @@ module Forward (D : Domain) (T : Transfer with type domain = D.t) :
     in
     { normal; exceptional }
 
-  let create : Cfg.t -> init:domain option -> map * WorkSet.t ref =
-   fun cfg ~init ->
+  let create : Cfg.t -> init:domain option -> init_handler:domain option -> map * WorkSet.t ref =
+   fun cfg ~init ~init_handler ->
     let map = Label.Tbl.create (Label.Tbl.length cfg.Cfg.blocks) in
     let set = ref WorkSet.empty in
     let value = Option.value init ~default:D.top in
+    let value_handler = Option.value init_handler ~default:D.top in
     (* The need to have several blocks in the initial work set stems from the
        fact that we currently need to consider all trap handlers as alive. *)
     Cfg.iter_blocks cfg ~f:(fun label block ->
-        if Label.equal label cfg.entry_label || block.is_trap_handler
-        then set := WorkSet.add { WorkSetElement.label; value } !set);
+        if Label.equal label cfg.entry_label
+        then begin
+          Label.Tbl.replace map label value;
+          set := WorkSet.add { WorkSetElement.label; value } !set
+        end
+        else if block.is_trap_handler then begin
+          Label.Tbl.replace map label value_handler;
+          set := WorkSet.add { WorkSetElement.label; value = value_handler } !set
+        end
+      );
     map, set
 
   let remove_and_return :
@@ -95,10 +104,10 @@ module Forward (D : Domain) (T : Transfer with type domain = D.t) :
     element, Cfg.get_block_exn cfg element.label
 
   let run :
-      Cfg.t -> ?max_iteration:int -> ?init:domain -> unit -> (map, map) Result.t
+      Cfg.t -> ?max_iteration:int -> ?init:domain -> ?init_handler:domain -> unit -> (map, map) Result.t
       =
-   fun cfg ?(max_iteration = max_int) ?init () ->
-    let res, work_set = create cfg ~init in
+   fun cfg ?(max_iteration = max_int) ?init ?init_handler () ->
+    let res, work_set = create cfg ~init ~init_handler in
     let iteration = ref 0 in
     while (not (WorkSet.is_empty !work_set)) && !iteration < max_iteration do
       incr iteration;
