@@ -44,7 +44,7 @@ module type S = sig
       [init] and [init_handler] values are the initial values for respectively
       the entry points and the exception handlers. *)
   val run :
-    Cfg.t -> ?max_iteration:int -> ?init:domain -> ?init_handler:domain -> unit -> (map, map) Result.t
+    Cfg.t -> ?max_iteration:int -> ?init:domain -> unit -> (map, map) Result.t
 end
 
 module Forward (D : Domain) (_ : Transfer with type domain = D.t) :
