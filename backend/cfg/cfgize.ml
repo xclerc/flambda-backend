@@ -584,165 +584,83 @@ let update_trap_handler_blocks : State.t -> Cfg.t -> unit =
     (State.get_exception_handlers state)
 
 module Trap_depth_and_exns = struct
-  module Domain : Cfg_dataflow.Domain with type t = Label.t list option = struct
-    type t = Label.t list option
 
-    let top =
-      (* note: this is obviously wrong, but the value is not used since we pass
-         `~init` and `~init_handler` when calling `Cfg_dataflow.S.run`. *)
-      Some []
+  type handler_stack = Label.t list
 
-    let bot = None
+  type handler_table = handler_stack Label.Tbl.t
 
-    let compare =
-      Option.compare (fun left right ->
-          match List.compare_lengths left right with (* XXX do we still need to compare the length? *)
-          | 0 -> List.compare Label.compare left right
-          | c -> c)
+  let record_handler
+    : type a . handler_stack -> handler_table -> can_raise:(a -> bool) -> a -> unit
+    = fun stack table ~can_raise instr ->
+      if can_raise instr then begin
+        match stack with
+        | [] -> ()
+        | handler_label :: handler_stack ->
+          Label.Tbl.replace table handler_label handler_stack;
+      end
 
-    let to_string dom =
-      Option.map
-        (fun dom -> dom |> ListLabels.map ~f:Int.to_string |> String.concat ",")
-        dom
-      |> Option.value ~default:"?"
+  let terminator
+    : handler_table -> handler_stack -> Cfg.terminator Cfg.instruction -> handler_stack
+    = fun table stack term ->
+      match term.desc with
+      | Never | Return | Tailcall (Func _) | Call_no_return _
+      | Raise _
+      | Always _ | Parity_test _ | Truth_test _ | Float_test _
+      | Int_test _ | Switch _ ->
+        record_handler stack table ~can_raise: Cfg.can_raise_terminator term.desc;
+        stack
+      | Tailcall (Self _) ->
+        if (List.length stack <> 0) then
+        Misc.fatal_error "Cfgize.Trap_depth_and_exns.basic: unexpected handler on self tailcall";
+        stack
+  ;;
 
-    let join left right =
-      match left, right with
-      | None, res | res, None -> res
-      | Some l, Some r ->
-        (* XXX should now l = r? *)
-        (*assert (List.compare Label.compare l r = 0);*)
-        if not (List.compare Label.compare l r = 0) then begin
-          Printf.eprintf "XXX left=%s\nright=%s\n%!"
-            (to_string left)
-            (to_string right)
-        end;
-        if List.length l >= List.length r then left else right
-  end
+  let basic
+    : handler_table -> handler_stack -> Cfg.basic Cfg.instruction -> handler_stack
+    = fun table stack instr ->
+      match instr.desc with
+      | Pushtrap { lbl_handler } ->
+        lbl_handler :: stack
+      | Poptrap ->
+        begin match stack with
+        | [] ->
+          Misc.fatal_error "Cfgize.Trap_depth_and_exns.basic: trying to pop from an empty stack"
+        | _ :: stack -> stack
+        end
+      | Op _ | Call _ | Reloadretaddr | Prologue ->
+        record_handler stack table ~can_raise:can_raise_instr instr;
+        stack
 
-  module Transfer : Cfg_dataflow.Transfer with type domain = Domain.t = struct
-    type domain = Domain.t
+  let rec update_block
+    : Cfg.t -> Label.t -> handler_stack -> unit
+    = fun cfg label stack ->
+      let block = Cfg.get_block_exn cfg label in
+      if block.trap_depth = invalid_trap_depth then begin
+        block.trap_depth <- succ (List.length stack);
+        let table = Label.Tbl.create 17 in
+        let stack =
+          terminator table
+            (ListLabels.fold_left block.body ~init:stack ~f:(basic table))
+            block.terminator
+        in
+        (* non-exceptional successors *)
+        Label.Set.iter
+          (fun successor_label ->
+             update_block cfg successor_label stack)
+          (Cfg.successor_labels ~normal:true ~exn:false block);
+        (* exceptional successors *)
+        Label.Tbl.iter
+          (fun handler_label handler_stack ->
+             block.exns <- Label.Set.add handler_label block.exns;
+             update_block cfg handler_label handler_stack)
+          table
+      end
 
-    type t =
-      { normal : domain;
-        exceptional : domain
-      }
+  let update_cfg
+    : Cfg.t -> unit
+    = fun cfg ->
+      update_block cfg cfg.entry_label []
 
-    let push hd tl = Some (hd :: tl)
-
-    (* XXX is it still the case?
-       it is probably still the case because of what we return in
-       basic>Pushtrap>exceptional and the fact we do not have the
-       "interprocedural" handler in the stack
-    *)
-    (* note: we can be in a situation where we will try to pop from the empty
-       stack, because handlers are in the initial working set and initialized
-       with an empty stack. We can safely ignore such cases, since the block is
-       either dead or will re-visited with an appropriate stack. *)
-    let pop = function [] -> Some [] | _ :: tl -> Some tl
-
-    let basic : domain -> Cfg.basic Cfg.instruction -> t =
-     fun domain instr ->
-      match domain with
-      | None -> { normal = None; exceptional = None; }
-      | Some domain as old_domain -> (
-        match instr.desc with
-        | Pushtrap { lbl_handler } ->
-          { normal = push lbl_handler domain; exceptional = pop domain }
-        | Poptrap ->
-          let new_domain = pop domain in
-          { normal = new_domain; exceptional = new_domain }
-        | Op _ | Call _ | Reloadretaddr | Prologue ->
-          { normal = old_domain; exceptional = pop domain })
-
-    let terminator : domain -> Cfg.terminator Cfg.instruction -> t =
-     fun domain term ->
-      match domain with
-      | None -> { normal = None; exceptional = None; }
-      | Some domain as old_domain -> (
-        match term.desc with
-        | Never | Call_no_return _ | Return
-        | Tailcall (Func _)
-        | Raise _ | Always _ | Parity_test _ | Truth_test _ | Float_test _
-        | Int_test _ | Switch _ ->
-          (* note: what we return as `normal` for the first five cases does not
-             matter, since there are no non-exceptional successors *)
-          { normal = old_domain; exceptional = pop domain }
-        | Tailcall (Self _) ->
-          (* note: if the stack is not empty, the graph is malformed and the
-             dataflow analysis is likely to diverge. *)
-          assert (List.length domain = 0);
-          { normal = old_domain; exceptional = pop domain })
-  end
-
-  module Dataflow_forward = Cfg_dataflow.Forward (Domain) (Transfer)
-
-  (* CR-someday xclerc for xclerc: this is quite similar to what we do in the
-     `Cfg_dataflow.Forward(...).transfer_block` function; the functor should
-     maybe export an helper function that could be used here (and to implement
-     `transfer_block`). *)
-  let compute_exns (block : Cfg.basic_block) (domain : Domain.t) : Label.Set.t =
-    let transfer f can_raise (acc_normal, acc_exns) instr =
-      let acc_exns =
-        match can_raise instr, acc_normal with
-        | true, Some (hd :: _) -> Label.Set.add hd acc_exns
-        | true, (None | Some []) | false, _ -> acc_exns
-      in
-      let { Transfer.normal; exceptional = _ } = f acc_normal instr in
-      normal, acc_exns
-    in
-    let _, exns =
-      transfer Transfer.terminator
-        (fun i -> Cfg.can_raise_terminator i.Cfg.desc)
-        (ListLabels.fold_left block.body ~init:(domain, Label.Set.empty)
-           ~f:(transfer Transfer.basic can_raise_instr))
-        block.terminator
-    in
-    exns
-
-  exception Restart
-
-  let update_cfg_step : Cfg.t -> unit =
-   fun cfg ->
-    match Dataflow_forward.run cfg ~init:(Some []) ~init_handler:None () with
-    | Result.Error _ ->
-      Misc.fatal_errorf
-        "Cfgize.Trap_depth_and_exns.update_cfg_step: fix-point could not be \
-         reached."
-    | Result.Ok map ->
-      Cfg.iter_blocks cfg ~f:(fun label block ->
-          match Label.Tbl.find_opt map label with
-          | None | Some None -> ()
-          | Some (Some stack as dom) ->
-            let computed_exns : Label.Set.t = compute_exns block dom in
-            block.trap_depth <- succ (List.length stack);
-            if Label.Set.compare computed_exns block.exns <> 0
-            then begin
-              (* note: by changing `exns` we are adding edges to the graph,
-                 hence the restart. *)
-              block.exns <- computed_exns;
-              raise Restart
-            end)
-
-  let rec update_cfg : Cfg.t -> unit =
-   fun cfg ->
-    try
-      update_cfg_step cfg;
-      (* note: at this point, `trap_depth` is correct for the blocks and we just
-         need to propagate the information to instructions. *)
-      Cfg.iter_blocks cfg ~f:(fun _label block ->
-          let body, trap_depth =
-            ListLabels.fold_left block.body ~init:([], block.Cfg.trap_depth)
-              ~f:(fun (body, trap_depth) (instr : Cfg.basic Cfg.instruction) ->
-                ( { instr with Cfg.trap_depth } :: body,
-                  match instr.desc with
-                  | Op _ | Call _ | Reloadretaddr | Prologue -> trap_depth
-                  | Pushtrap _ -> succ trap_depth
-                  | Poptrap -> pred trap_depth ))
-          in
-          block.body <- List.rev body;
-          block.terminator <- { block.terminator with trap_depth })
-    with Restart -> update_cfg cfg
 end
 
 let fundecl :
@@ -819,8 +737,7 @@ let fundecl :
     ~next:fallthrough_label;
   update_trap_handler_blocks state cfg;
   (* note: `Trap_depth_and_exns.update_cfg` may add edges to the graph, and
-     should hence be executed before
-     `Cfg.register_predecessors_for_all_blocks`. *)
+     should hence be executed before `Cfg.register_predecessors_for_all_blocks`. *)
   Trap_depth_and_exns.update_cfg cfg;
   Cfg.register_predecessors_for_all_blocks cfg;
   let cfg_with_layout =
