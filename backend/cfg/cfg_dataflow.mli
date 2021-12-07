@@ -41,8 +41,7 @@ module type S = sig
       A fix-point is not reached if there is still pending work after
       [max_iteration] (defaulting to [max_int]) have been executed, and
       iteration being the processing of one element from the working set. The
-      [init] and [init_handler] values are the initial values for respectively
-      the entry points and the exception handlers. *)
+      [init] value is the initial value of entry points. *)
   val run :
     Cfg.t -> ?max_iteration:int -> ?init:domain -> unit -> (map, map) Result.t
 end
