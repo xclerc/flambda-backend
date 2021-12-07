@@ -175,8 +175,7 @@ let equal_raise_kind : Lambda.raise_kind -> Lambda.raise_kind -> bool =
 let array_equal eq left right =
   Array.length left = Array.length right && Array.for_all2 eq left right
 
-let is_valid_trap_depth : int -> bool = fun trap_depth ->
-  trap_depth >= 0
+let is_valid_trap_depth : int -> bool = fun trap_depth -> trap_depth >= 0
 
 let check_external_call_operation :
     location ->
@@ -365,10 +364,11 @@ let check_instruction :
   then different location "FDO info";
   if check_live && not (Reg.Set.equal expected.live result.live)
   then different location "live register set";
-  if is_valid_trap_depth expected.trap_depth && is_valid_trap_depth result.trap_depth then begin
+  if is_valid_trap_depth expected.trap_depth
+     && is_valid_trap_depth result.trap_depth
+  then
     if not (Int.equal expected.trap_depth result.trap_depth)
     then different location "trap depth";
-  end;
   (* note: not comparing `id` fields on purpose *)
   ()
 
@@ -485,7 +485,7 @@ let check_terminator_instruction :
  [@@ocaml.warning "-4"]
 
 let check_basic_block : State.t -> Cfg.basic_block -> Cfg.basic_block -> unit =
-  fun state expected result ->
+ fun state expected result ->
   let location =
     Printf.sprintf "block %s/%s"
       (Label.to_string expected.start)
@@ -494,16 +494,16 @@ let check_basic_block : State.t -> Cfg.basic_block -> Cfg.basic_block -> unit =
   check_basic_instruction_list state location 0 expected.body result.body;
   check_terminator_instruction state location expected.terminator
     result.terminator;
-  (* State.add_label_sets_to_check state
-    (location ^ " (predecessors)")
-    expected.predecessors
-    result.predecessors; *)
-  if is_valid_trap_depth expected.trap_depth && is_valid_trap_depth result.trap_depth then begin
+  (* State.add_label_sets_to_check state (location ^ " (predecessors)")
+     expected.predecessors result.predecessors; *)
+  if is_valid_trap_depth expected.trap_depth
+     && is_valid_trap_depth result.trap_depth
+  then begin
     if not (Int.equal expected.trap_depth result.trap_depth)
     then different location "trap depth";
     State.add_label_sets_to_check state
       (location ^ " (exceptional successors)")
-      expected.exns result.exns;
+      expected.exns result.exns
   end;
   if not (Bool.equal expected.can_raise result.can_raise)
   then different location "can_raise";
@@ -559,10 +559,11 @@ let save_cfg_as_dot : Cfg_with_layout.t -> string -> unit =
  fun cfg_with_layout msg ->
   Cfg_with_layout.save_as_dot cfg_with_layout ~show_instr:true ~show_exn:true
     ~annotate_block:(fun label ->
-        let trap_depth =
-          (Cfg.get_block_exn (Cfg_with_layout.cfg cfg_with_layout) label).Cfg.trap_depth
-        in
-        Printf.sprintf "label:%d trap_depth:%d" label trap_depth)
+      let trap_depth =
+        (Cfg.get_block_exn (Cfg_with_layout.cfg cfg_with_layout) label)
+          .Cfg.trap_depth
+      in
+      Printf.sprintf "label:%d trap_depth:%d" label trap_depth)
     ~annotate_succ:(Printf.sprintf "%d->%d") msg
 
 let check_cfg_with_layout :

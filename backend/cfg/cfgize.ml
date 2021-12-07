@@ -584,83 +584,87 @@ let update_trap_handler_blocks : State.t -> Cfg.t -> unit =
     (State.get_exception_handlers state)
 
 module Trap_depth_and_exns = struct
-
   type handler_stack = Label.t list
 
   type handler_table = handler_stack Label.Tbl.t
 
-  let record_handler
-    : type a . handler_stack -> handler_table -> can_raise:(a -> bool) -> a -> unit
-    = fun stack table ~can_raise instr ->
-      if can_raise instr then begin
-        match stack with
-        | [] -> ()
-        | handler_label :: handler_stack ->
-          Label.Tbl.replace table handler_label handler_stack;
-      end
+  let record_handler :
+      type a.
+      handler_stack -> handler_table -> can_raise:(a -> bool) -> a -> unit =
+   fun stack table ~can_raise instr ->
+    if can_raise instr
+    then
+      match stack with
+      | [] -> ()
+      | handler_label :: handler_stack ->
+        Label.Tbl.replace table handler_label handler_stack
 
-  let terminator
-    : handler_table -> handler_stack -> Cfg.terminator Cfg.instruction -> handler_stack
-    = fun table stack term ->
-      match term.desc with
-      | Never | Return | Tailcall (Func _) | Call_no_return _
-      | Raise _
-      | Always _ | Parity_test _ | Truth_test _ | Float_test _
-      | Int_test _ | Switch _ ->
-        record_handler stack table ~can_raise: Cfg.can_raise_terminator term.desc;
-        stack
-      | Tailcall (Self _) ->
-        if (List.length stack <> 0) then
-        Misc.fatal_error "Cfgize.Trap_depth_and_exns.basic: unexpected handler on self tailcall";
-        stack
-  ;;
+  let terminator :
+      handler_table ->
+      handler_stack ->
+      Cfg.terminator Cfg.instruction ->
+      handler_stack =
+   fun table stack term ->
+    match term.desc with
+    | Never | Return
+    | Tailcall (Func _)
+    | Call_no_return _ | Raise _ | Always _ | Parity_test _ | Truth_test _
+    | Float_test _ | Int_test _ | Switch _ ->
+      record_handler stack table ~can_raise:Cfg.can_raise_terminator term.desc;
+      stack
+    | Tailcall (Self _) ->
+      if List.length stack <> 0
+      then
+        Misc.fatal_error
+          "Cfgize.Trap_depth_and_exns.basic: unexpected handler on self \
+           tailcall";
+      stack
 
-  let basic
-    : handler_table -> handler_stack -> Cfg.basic Cfg.instruction -> handler_stack
-    = fun table stack instr ->
-      match instr.desc with
-      | Pushtrap { lbl_handler } ->
-        lbl_handler :: stack
-      | Poptrap ->
-        begin match stack with
-        | [] ->
-          Misc.fatal_error "Cfgize.Trap_depth_and_exns.basic: trying to pop from an empty stack"
-        | _ :: stack -> stack
-        end
-      | Op _ | Call _ | Reloadretaddr | Prologue ->
-        record_handler stack table ~can_raise:can_raise_instr instr;
-        stack
+  let basic :
+      handler_table ->
+      handler_stack ->
+      Cfg.basic Cfg.instruction ->
+      handler_stack =
+   fun table stack instr ->
+    match instr.desc with
+    | Pushtrap { lbl_handler } -> lbl_handler :: stack
+    | Poptrap -> begin
+      match stack with
+      | [] ->
+        Misc.fatal_error
+          "Cfgize.Trap_depth_and_exns.basic: trying to pop from an empty stack"
+      | _ :: stack -> stack
+    end
+    | Op _ | Call _ | Reloadretaddr | Prologue ->
+      record_handler stack table ~can_raise:can_raise_instr instr;
+      stack
 
-  let rec update_block
-    : Cfg.t -> Label.t -> handler_stack -> unit
-    = fun cfg label stack ->
-      let block = Cfg.get_block_exn cfg label in
-      if block.trap_depth = invalid_trap_depth then begin
-        block.trap_depth <- succ (List.length stack);
-        let table = Label.Tbl.create 17 in
-        let stack =
-          terminator table
-            (ListLabels.fold_left block.body ~init:stack ~f:(basic table))
-            block.terminator
-        in
-        (* non-exceptional successors *)
-        Label.Set.iter
-          (fun successor_label ->
-             update_block cfg successor_label stack)
-          (Cfg.successor_labels ~normal:true ~exn:false block);
-        (* exceptional successors *)
-        Label.Tbl.iter
-          (fun handler_label handler_stack ->
-             block.exns <- Label.Set.add handler_label block.exns;
-             update_block cfg handler_label handler_stack)
-          table
-      end
+  let rec update_block : Cfg.t -> Label.t -> handler_stack -> unit =
+   fun cfg label stack ->
+    let block = Cfg.get_block_exn cfg label in
+    if block.trap_depth = invalid_trap_depth
+    then begin
+      block.trap_depth <- succ (List.length stack);
+      let table = Label.Tbl.create 17 in
+      let stack =
+        terminator table
+          (ListLabels.fold_left block.body ~init:stack ~f:(basic table))
+          block.terminator
+      in
+      (* non-exceptional successors *)
+      Label.Set.iter
+        (fun successor_label -> update_block cfg successor_label stack)
+        (Cfg.successor_labels ~normal:true ~exn:false block);
+      (* exceptional successors *)
+      Label.Tbl.iter
+        (fun handler_label handler_stack ->
+          block.exns <- Label.Set.add handler_label block.exns;
+          update_block cfg handler_label handler_stack)
+        table
+    end
 
-  let update_cfg
-    : Cfg.t -> unit
-    = fun cfg ->
-      update_block cfg cfg.entry_label []
-
+  let update_cfg : Cfg.t -> unit =
+   fun cfg -> update_block cfg cfg.entry_label []
 end
 
 let fundecl :
@@ -737,7 +741,8 @@ let fundecl :
     ~next:fallthrough_label;
   update_trap_handler_blocks state cfg;
   (* note: `Trap_depth_and_exns.update_cfg` may add edges to the graph, and
-     should hence be executed before `Cfg.register_predecessors_for_all_blocks`. *)
+     should hence be executed before
+     `Cfg.register_predecessors_for_all_blocks`. *)
   Trap_depth_and_exns.update_cfg cfg;
   Cfg.register_predecessors_for_all_blocks cfg;
   let cfg_with_layout =
