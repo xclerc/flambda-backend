@@ -114,8 +114,11 @@ default:
 .PHONY: all
 all:
 	@rm -f $(TESTLOG)
+	@echo "DEBUG all/0"
 	@$(MAKE) --no-print-directory new-without-report
+	@echo "DEBUG all/1"
 	@$(MAKE) --no-print-directory report
+	@echo "DEBUG all/2"
 
 .PHONY: new-without-report
 new-without-report: lib tools
@@ -314,5 +317,7 @@ clean:
 
 .PHONY: report
 report:
+	@echo "DEBUG report $(TESTLOG)"
+	@echo "DEBUG report $(AWK)"
 	@if [ ! -f $(TESTLOG) ]; then echo "No $(TESTLOG) file."; exit 1; fi
 	@$(AWK) -f ./summarize.awk < $(TESTLOG)
