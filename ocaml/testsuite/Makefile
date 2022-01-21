@@ -252,7 +252,10 @@ one: lib tools
 	@if [ -n '$(LIST)' ] ; then \
 	   echo "DEBUG-CI one/8 $(LIST)"; \
 	   echo "DEBUG-CI one/8 $$LIST"; \
+	   cat $$LIST; \
+	   echo "DEBUG-CI one/9 $$LIST"; \
      while IFS='' read -r LINE; do \
+	     echo "DEBUG-CI one/10 $$LINE"; \
        $(MAKE) --no-print-directory exec-one DIR=$$LINE ; \
      done < $$LIST 2>&1 | tee $(TESTLOG) ; \
      $(MAKE) report ; fi
