@@ -450,11 +450,12 @@ runtest-upstream:
 	# We should build the native ocamltest too.
 	cp $(stage1_build)/ocaml/ocamltest/ocamltest.byte _runtest/ocamltest/ocamltest
 	grep -v '^#' testsuite/flambda2-test-list > _runtest/flambda2-test-list
-	@echo "DEBUG runtest-upstream"
+	@echo "DEBUG-CI runtest-upstream"
 	@echo "OCAMLSRCDIR=$$(pwd)/_runtest"
 	@echo "CAML_LD_LIBRARY_PATH=$$(pwd)/_runtest/lib/ocaml/stublibs"
 	@echo "$(middle_end)"
-	@which parallel
+	@echo "$$(which parallel > /dev/null 2>&1)"
+	@which parallel || true
 	(export OCAMLSRCDIR=$$(pwd)/_runtest; \
 	 export CAML_LD_LIBRARY_PATH=$$(pwd)/_runtest/lib/ocaml/stublibs; \
 	 cd _runtest/testsuite \
