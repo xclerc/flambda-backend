@@ -449,7 +449,7 @@ runtest-upstream:
 	cp $(stage1_build)/ocaml/tools/cmpbyt.bc _runtest/tools/cmpbyt
 	# We should build the native ocamltest too.
 	cp $(stage1_build)/ocaml/ocamltest/ocamltest.byte _runtest/ocamltest/ocamltest
-	grep -v '^#' testsuite/flambda2-test-list > _runtest/flambda2-test-list
+	grep -v '^#' testsuite/flambda2-test-list | grep -v '^$' > _runtest/flambda2-test-list
 	@echo "DEBUG-CI runtest-upstream"
 	@echo "OCAMLSRCDIR=$$(pwd)/_runtest"
 	@echo "CAML_LD_LIBRARY_PATH=$$(pwd)/_runtest/lib/ocaml/stublibs"
