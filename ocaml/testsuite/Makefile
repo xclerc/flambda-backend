@@ -192,6 +192,7 @@ parallel: parallel-*
 
 .PHONY: list
 list: lib tools
+	@echo "DEBUG-CI list $(FILE)"
 	@if [ -z "$(FILE)" ]; \
     then echo "No value set for variable 'FILE'."; \
     exit 1; \
@@ -220,25 +221,34 @@ list-parallel: lib tools
 
 .PHONY: one
 one: lib tools
+	@echo "DEBUG-CI one $(DIR) $(LIST) $(TEST)"
+	@echo "DEBUG-CI one $(words $(DIR) $(LIST) $(TEST))"
 	@case "$(words $(DIR) $(LIST) $(TEST))" in \
    0) echo 'No value set for variable DIR, LIST or TEST'>&2; exit 1;; \
    1) exit 0;; \
    *) echo 'Please specify just one of DIR, LIST or TEST'>&2; exit 1;; \
    esac
+	@echo "DEBUG-CI one/1"
 	@if [ -n '$(DIR)' ] && [ ! -d '$(DIR)' ]; then \
     echo "Directory '$(DIR)' does not exist."; exit 1; \
   fi
+	@echo "DEBUG-CI one/2"
 	@if [ -n '$(TEST)' ] && [ ! -e '$(TEST)' ]; then \
     echo "Test '$(TEST)' does not exist."; exit 1; \
   fi
+	@echo "DEBUG-CI one/3"
 	@if [ -n '$(LIST)' ] && [ ! -e '$(LIST)' ]; then \
     echo "File '$(LIST)' does not exist."; exit 1; \
   fi
+	@echo "DEBUG-CI one/4"
 	@if [ -n '$(DIR)' ] ; then \
     $(MAKE) --no-print-directory exec-one DIR=$(DIR); fi
+	@echo "DEBUG-CI one/5"
 	@if [ -n '$(TEST)' ] ; then \
     TERM=dumb $(OCAMLTESTENV) $(ocamltest) $(OCAMLTESTFLAGS) $(TEST); fi
+	@echo "DEBUG-CI one/6"
 	@$(MAKE) check-failstamp
+	@echo "DEBUG-CI one/7"
 	@if [ -n '$(LIST)' ] ; then \
      while IFS='' read -r LINE; do \
        $(MAKE) --no-print-directory exec-one DIR=$$LINE ; \
@@ -247,11 +257,14 @@ one: lib tools
 
 .PHONY: exec-one
 exec-one:
+	@echo "DEBUG-CI exec-one $(DIR)"
+	@echo "DEBUG-CI exec-one $(OCAMLTESTDIR_CYGPATH)"
 	@if $(ocamltest) -list-tests $(DIR) >/dev/null 2>&1; then \
 	  echo "Running tests from '$$DIR' ..."; \
 	  $(MAKE) exec-ocamltest DIR=$(DIR) \
 	    OCAMLTESTENV="OCAMLTESTDIR=$(OCAMLTESTDIR_CYGPATH)"; \
 	else \
+	  echo "Running tests from '$$DIR' /* ..."; \
 	  for dir in $(DIR)/*; do \
 	    if [ -d $$dir ]; then \
 	      $(MAKE) exec-one DIR=$$dir; \
