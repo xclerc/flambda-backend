@@ -221,7 +221,7 @@ list-parallel: lib tools
 
 .PHONY: one
 one: lib tools
-	@echo "DEBUG-CI one $(DIR) $(LIST) $(TEST)"
+	@echo "DEBUG-CI one dir=$(DIR) list=$(LIST) test=$(TEST)"
 	@echo "DEBUG-CI one $(words $(DIR) $(LIST) $(TEST))"
 	@case "$(words $(DIR) $(LIST) $(TEST))" in \
    0) echo 'No value set for variable DIR, LIST or TEST'>&2; exit 1;; \
@@ -250,6 +250,8 @@ one: lib tools
 	@$(MAKE) check-failstamp
 	@echo "DEBUG-CI one/7"
 	@if [ -n '$(LIST)' ] ; then \
+	   echo "DEBUG-CI one/8 $(LIST)"; \
+	   echo "DEBUG-CI one/8 $$LIST"; \
      while IFS='' read -r LINE; do \
        $(MAKE) --no-print-directory exec-one DIR=$$LINE ; \
      done < $$LIST 2>&1 | tee $(TESTLOG) ; \
