@@ -149,19 +149,17 @@ let make_temporary :
 let simplify_cfg : Cfg_with_layout.t -> Cfg_with_layout.t =
  fun cfg_with_layout ->
   let cfg = Cfg_with_layout.cfg cfg_with_layout in
-  Profile.record ~accumulate:true "remove-noop-move"
-    (fun () ->
+
       Cfg.iter_blocks cfg ~f:(fun _label block ->
           DLL.filter_left block.body ~f:(fun instr ->
-              not (Cfg.is_noop_move instr))))
-    ();
-  Profile.record ~accumulate:true "eliminate" Eliminate_fallthrough_blocks.run
+              not (Cfg.is_noop_move instr)));
+  Eliminate_fallthrough_blocks.run
     cfg_with_layout;
-  Profile.record ~accumulate:true "merge" Merge_straightline_blocks.run
+  Merge_straightline_blocks.run
     cfg_with_layout;
-  Profile.record ~accumulate:true "dead_block"
+
     Eliminate_dead_code.run_dead_block cfg_with_layout;
-  Profile.record ~accumulate:true "terminator" Simplify_terminator.run cfg;
+  Simplify_terminator.run cfg;
   cfg_with_layout
 
 let precondition : Cfg_with_layout.t -> unit =
@@ -498,10 +496,11 @@ let insert_block :
     unit =
  fun cfg_with_layout body ~after:predecessor_block ~next_instruction_id ->
   let cfg = Cfg_with_layout.cfg cfg_with_layout in
-  let successors =
+  (*let successors =
     Cfg.successor_labels ~normal:true ~exn:false predecessor_block
   in
-  if Label.Set.cardinal successors = 0
+    if Label.Set.cardinal successors = 0*)
+  if Cfg.successor_labels_is_empty ~normal:true ~exn:false predecessor_block
   then
     Misc.fatal_errorf
       "Cannot insert a block after block %a: it has no successors" Label.print
@@ -526,7 +525,8 @@ let insert_block :
       DLL.iter body ~f:(fun instr -> DLL.add_end new_body (copy instr));
       new_body
   in
-  Label.Set.iter
+  (*Label.Set.iter*)
+  Cfg.iter_successor_labels ~normal:true ~exn:false predecessor_block ~f:
     (fun successor_label ->
       let successor_block = Cfg.get_block_exn cfg successor_label in
       let start = Cmm.new_label () in
@@ -565,4 +565,4 @@ let insert_block :
         <- successor_block.predecessors
            |> Label.Set.remove predecessor_block.start
            |> Label.Set.add start)
-    successors
+    (*successors*)

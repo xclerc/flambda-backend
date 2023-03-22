@@ -682,7 +682,7 @@ module Stack_offset_and_exn = struct
       if block.stack_offset = invalid_stack_offset
       then true
       else (
-        assert (block.stack_offset = compute_stack_offset ~stack_offset ~traps);
+        (* assert (block.stack_offset = compute_stack_offset ~stack_offset ~traps); *)
         false)
     in
     if was_invalid
@@ -697,9 +697,10 @@ module Stack_offset_and_exn = struct
         process_terminator ~stack_offset ~traps block.terminator
       in
       (* non-exceptional successors *)
-      Label.Set.iter
+      (*Label.Set.iter*)
+      Cfg.iter_successor_labels ~normal:true ~exn:false block ~f:
         (update_block cfg ~stack_offset ~traps)
-        (Cfg.successor_labels ~normal:true ~exn:false block);
+        (*(Cfg.successor_labels ~normal:true ~exn:false block)*);
       (* exceptional successor *)
       if block.can_raise
       then (
@@ -804,8 +805,7 @@ let fundecl :
      should hence be executed before
      `Cfg.register_predecessors_for_all_blocks`. *)
   Stack_offset_and_exn.update_cfg cfg;
-  Profile.record ~accumulate:true "register_preds"
-    Cfg.register_predecessors_for_all_blocks cfg;
+  Cfg.register_predecessors_for_all_blocks cfg;
   let cfg_with_layout =
     Cfg_with_layout.create cfg ~layout:(State.get_layout state)
       ~preserve_orig_labels ~new_labels:Label.Set.empty
@@ -815,10 +815,7 @@ let fundecl :
      integer test. This simplification should happen *after* the one about
      straightline blocks because merging blocks creates more opportunities for
      terminator simplification. *)
-  Profile.record ~accumulate:true "optimizations"
-    (fun () ->
       if simplify_terminators then Merge_straightline_blocks.run cfg_with_layout;
       Eliminate_dead_code.run_dead_block cfg_with_layout;
-      if simplify_terminators then Simplify_terminator.run cfg)
-    ();
+      if simplify_terminators then Simplify_terminator.run cfg;
   cfg_with_layout

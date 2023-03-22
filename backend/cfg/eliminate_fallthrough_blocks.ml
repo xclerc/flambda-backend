@@ -37,6 +37,13 @@ let is_fallthrough_block cfg_with_layout (block : C.basic_block) =
      || not (C.is_pure_terminator block.terminator.desc)
   then None
   else
+    match C.only_normal_successor_label block with
+    | None -> None
+    | Some target_label ->
+      if Label.equal target_label block.start
+      then None (* self-loop *)
+      else Some target_label
+    (*
     let successors = C.successor_labels ~normal:true ~exn:false block in
     if Label.Set.cardinal successors = 1
     then
@@ -45,6 +52,7 @@ let is_fallthrough_block cfg_with_layout (block : C.basic_block) =
       then None (* self-loop *)
       else Some target_label
     else None
+    *)
 
 (* CR-someday mshinwell: The logic below looks similar in structure to
    [Eliminate_dead_blocks]. I think it would be worth trying to factor that out

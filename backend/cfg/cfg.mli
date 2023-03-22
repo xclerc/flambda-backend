@@ -103,6 +103,10 @@ val predecessor_labels : basic_block -> Label.t list
 (** [exn] does not account for exceptional flow from the block that goes outside
     of the function. *)
 val successor_labels : normal:bool -> exn:bool -> basic_block -> Label.Set.t
+val successor_labels_is_empty : normal:bool -> exn:bool -> basic_block -> bool
+val successor_labels_cardinal : normal:bool -> exn:bool -> basic_block -> int
+val iter_successor_labels : normal:bool -> exn:bool -> basic_block -> f:(Label.t -> unit) -> unit
+val only_normal_successor_label : basic_block -> Label.t option
 
 val replace_successor_labels :
   t -> normal:bool -> exn:bool -> basic_block -> f:(Label.t -> Label.t) -> unit

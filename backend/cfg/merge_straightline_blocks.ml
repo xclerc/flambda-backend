@@ -57,21 +57,25 @@ let rec merge_blocks (removed : Label.Set.t)
   let new_removed =
     Label.Tbl.fold
       (fun b1_label (b1_block : Cfg.basic_block) acc ->
-        let b1_successors =
+        (*let b1_successors =
           Cfg.successor_labels ~normal:true ~exn:false b1_block
         in
         match Label.Set.cardinal b1_successors with
-        | 1 ->
-          let b2_label = Label.Set.choose b1_successors in
+          | 1 ->*)
+         match Cfg.only_normal_successor_label b1_block with
+         | Some b2_label ->
+          (*let b2_label = Label.Set.choose b1_successors in*)
           let b2_block = Label.Tbl.find cfg.blocks b2_label in
-          let b2_predecessors = Cfg.predecessor_labels b2_block in
+          (*let b2_predecessors = Cfg.predecessor_labels b2_block in*)
+          let b2_predecessors = b2_block.Cfg.predecessors in
           if (not (Label.equal b1_label cfg.entry_label))
              && (not (Label.equal b1_label b2_label))
-             && List.compare_length_with b2_predecessors 1 = 0
+             (* && List.compare_length_with b2_predecessors 1 = 0 *)
+             && Label.Set.cardinal b2_predecessors = 1
              && Cfg.is_pure_terminator b1_block.terminator.desc
              && not b1_block.can_raise
           then (
-            assert (Label.equal b1_label (List.hd b2_predecessors));
+            (*assert (Label.equal b1_label (List.hd b2_predecessors));*)
             (* modify b1 *)
             DLL.transfer ~to_:b1_block.body ~from:b2_block.body ();
             b1_block.terminator <- b2_block.terminator;
@@ -91,7 +95,7 @@ let rec merge_blocks (removed : Label.Set.t)
             b2_block.exn <- None;
             Label.Set.add b2_label acc)
           else acc
-        | _ -> acc)
+        | None -> acc)
       cfg.blocks Label.Set.empty
   in
   if not (Label.Set.is_empty new_removed)

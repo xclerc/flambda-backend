@@ -136,6 +136,8 @@ let dump ppf t ~msg =
     fprintf ppf "\npredecessors:";
     Label.Set.iter (fprintf ppf " %d") block.predecessors;
     fprintf ppf "\nsuccessors:";
+    (* XXX *)
+    let _ = assert false in
     Label.Set.iter (fprintf ppf " %d")
       (Cfg.successor_labels ~normal:true ~exn:false block);
     fprintf ppf "\nexn-successors:";
@@ -287,6 +289,8 @@ let print_dot ?(show_instr = true) ?(show_exn = true)
         (Format.pp_print_option Format.pp_print_string)
         label
     in
+    (* XXX *)
+    let _ = assert false in
     Label.Set.iter
       (fun l ->
         print_arrow ppf (name label) (name l) ~label:(annotate_succ label l))
@@ -297,7 +301,7 @@ let print_dot ?(show_instr = true) ?(show_exn = true)
         (fun l ->
           print_arrow ppf (name label) (name l) ~style:"dashed"
             ~label:(annotate_succ label l))
-        (Cfg.successor_labels ~normal:false ~exn:true block);
+        (Cfg.successor_labels ~normal:false ~exn:true block); (* XXX *)
       if Cfg.can_raise_interproc block
       then print_arrow ppf (name label) "placeholder" ~style:"dashed")
   in

@@ -28,7 +28,8 @@ module type Dataflow_direction_S = sig
 
   (* For a given block gives a sequence of all successor labels (taking the
      dataflow direction into account). *)
-  val edges_out : Cfg.basic_block -> Label.t Seq.t
+  (*val edges_out : Cfg.basic_block -> Label.t Seq.t*)
+  val iter_edges_out : Cfg.basic_block -> f:(Label.t -> unit) -> unit
 
   val transfer_block :
     update_instr:(int -> instr_domain -> unit) ->
@@ -168,7 +169,8 @@ module Make_dataflow (D : Dataflow_direction_S) :
       Label.Tbl.add mapping v v_values;
       Stack.push v_values stack;
       let block = Cfg.get_block_exn cfg v in
-      Seq.iter
+      D.iter_edges_out block ~f:
+      (*Seq.iter*)
         (fun w ->
           match Label.Tbl.find_opt mapping w with
           | None ->
@@ -177,7 +179,7 @@ module Make_dataflow (D : Dataflow_direction_S) :
           | Some w_values ->
             if w_values.on_stack
             then v_values.lowlink <- int_min v_values.lowlink w_values.index)
-        (D.edges_out block);
+        (*(D.edges_out block)*);
       if v_values.lowlink = v_values.index then pop_until v;
       v_values
     in
@@ -240,7 +242,8 @@ module Make_dataflow (D : Dataflow_direction_S) :
         D.transfer_block ~update_instr:(update_instr work_state) current_value
           current_block
       in
-      Seq.iter
+      D.iter_edges_out current_block ~f:
+      (*Seq.iter*)
         (fun successor ->
           let successor_block = Cfg.get_block_exn work_state.cfg successor in
           let successor_value =
@@ -254,7 +257,7 @@ module Make_dataflow (D : Dataflow_direction_S) :
           then (
             Label.Tbl.replace work_state.map_block successor new_value;
             WorkSet.add work_state.queue successor))
-        (D.edges_out current_block);
+        (*(D.edges_out current_block)*);
       ()
     done;
     if WorkSet.is_empty work_state.queue then Ok () else Error ()
@@ -311,11 +314,15 @@ module Forward (D : Domain_S) (T : Forward_transfer with type domain = D.t) :
 
     type instr_domain = D.t
 
+    let iter_edges_out block ~f =
+      Cfg.iter_successor_labels ~normal:true ~exn:true block ~f
+    (*
     let edges_out : Cfg.basic_block -> Label.t Seq.t =
      fun block ->
       (* CR-soon azewierzejew for xclerc: Add something to [Cfg] interface to
          make this function (and the one in [Backward]) more efficient. *)
       Cfg.successor_labels ~normal:true ~exn:true block |> Label.Set.to_seq
+    *)
 
     let join_result :
         old_value:Transfer_domain.t ->
@@ -448,8 +455,12 @@ module Backward (D : Domain_S) (T : Backward_transfer with type domain = D.t) :
 
     type instr_domain = D.t
 
+    let iter_edges_out block ~f =
+      Label.Set.iter f block.Cfg.predecessors
+    (*
     let edges_out : Cfg.basic_block -> Label.t Seq.t =
      fun block -> Cfg.predecessor_labels block |> List.to_seq
+    *)
 
     let join_result :
         old_value:Transfer_domain.t ->

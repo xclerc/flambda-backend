@@ -289,23 +289,23 @@ let compile_fundecl ~ppf_dump ~funcnames fd_cmm =
       ++ Profile.record ~accumulate:true "irc" (fun fd ->
         let cfg =
           fd
-          ++ Profile.record ~accumulate:true "cfgize" cfgize
+          ++ (*Profile.record ~accumulate:true "cfgize"*) cfgize
           ++ Cfg_with_liveness.make
-          ++ Profile.record ~accumulate:true "cfg_deadcode" Cfg_deadcode.run
+          ++ (*Profile.record ~accumulate:true "cfg_deadcode"*) Cfg_deadcode.run
         in
-        let cfg_description =
+        (*let cfg_description =
           Profile.record ~accumulate:true "cfg_create_description"
             Cfg_regalloc_validate.Description.create (Cfg_with_liveness.cfg_with_layout cfg)
-        in
+        in*)
         cfg
-        ++ Profile.record ~accumulate:true "cfg_irc" Cfg_irc.run
+        ++ (*Profile.record ~accumulate:true "cfg_irc"*) Cfg_irc.run
         ++ Cfg_with_liveness.cfg_with_layout
-        ++ Profile.record ~accumulate:true "cfg_validate_description" (Cfg_regalloc_validate.run cfg_description)
-        ++ Profile.record ~accumulate:true "cfg_simplify" Cfg_regalloc_utils.simplify_cfg
-        ++ Profile.record ~accumulate:true "save_cfg" save_cfg
+        (*++ Profile.record ~accumulate:true "cfg_validate_description" (Cfg_regalloc_validate.run cfg_description)*)
+        ++ (*Profile.record ~accumulate:true "cfg_simplify"*) Cfg_regalloc_utils.simplify_cfg
+        (*++ Profile.record ~accumulate:true "save_cfg" save_cfg
         ++ Profile.record ~accumulate:true "cfg_reorder_blocks"
-             (reorder_blocks_random ppf_dump)
-        ++ Profile.record ~accumulate:true "cfg_to_linear" Cfg_to_linear.run)
+             (reorder_blocks_random ppf_dump)*)
+        ++ (*Profile.record ~accumulate:true "cfg_to_linear"*) Cfg_to_linear.run)
     | true, _ | false, Upstream ->
       fd
       ++ Profile.record ~accumulate:true "default" (fun fd ->

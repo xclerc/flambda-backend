@@ -107,6 +107,301 @@ let successor_labels ~normal ~exn block =
     | Some label ->
       Label.Set.add label (successor_labels_normal block.terminator))
 
+let successor_labels_is_empty ~normal ~exn block =
+  if normal then begin
+    match block.terminator.desc with
+    | Never
+    | Return
+    | Raise _
+    | Tailcall_func _
+    | Call_no_return _
+    | Switch [||] (* is it legal? *) ->
+      (* no normal successor *)
+      if exn then begin
+        match block.exn with
+        | None -> true
+        | Some label -> ignore label; false
+      end else
+        true
+    | Always label
+    | Tailcall_self { destination = label }
+    | Call { op = _; label_after = label; }
+    | Prim { op = _; label_after = label; }
+    | Specific_can_raise { op = _; label_after = label; }
+    | Poll_and_jump label
+    | Switch [|label|]->
+      (* one normal successor *)
+      ignore label;
+      false
+    | Parity_test { ifso; ifnot; }
+    | Truth_test { ifso; ifnot; }
+    | Switch [|ifso; ifnot; |] ->
+      (* one or two normal successors *)
+      ignore ifso; ignore ifnot;
+      false
+    | Int_test { lt; eq; gt; is_signed = _; imm = _; }
+    | Switch [|lt;eq;gt|]->
+      ignore lt; ignore eq; ignore gt;
+      false
+    | Float_test { lt; eq; gt; uo; }
+    | Switch [|lt;eq;gt;uo|] ->
+      (* one, two, three, or four normal successors *)
+      ignore lt; ignore eq; ignore gt; ignore uo;
+      false
+    | Switch labels ->
+      (* any number of normal successors - fallback to set *)
+      ignore labels;
+      false
+  end else begin
+    (* no normal successor *)
+    if exn then begin
+      match block.exn with
+      | None -> true
+      | Some label -> ignore label; false
+    end else
+      true
+  end
+
+let successor_labels_cardinal ~normal ~exn block =
+  if normal then begin
+    match block.terminator.desc with
+    | Never
+    | Return
+    | Raise _
+    | Tailcall_func _
+    | Call_no_return _
+    | Switch [||] (* is it legal? *) ->
+      (* no normal successor *)
+      if exn then begin
+        match block.exn with
+        | None -> 0
+        | Some label -> ignore label; 1
+      end else
+        0
+    | Always label
+    | Tailcall_self { destination = label }
+    | Call { op = _; label_after = label; }
+    | Prim { op = _; label_after = label; }
+    | Specific_can_raise { op = _; label_after = label; }
+    | Poll_and_jump label
+    | Switch [|label|]->
+      (* one normal successor *)
+      if exn then begin
+        match block.exn with
+        | None -> 1
+        | Some other_label -> if Label.equal label other_label then 1 else 2
+      end else
+        1
+    | Parity_test { ifso; ifnot; }
+    | Truth_test { ifso; ifnot; }
+    | Switch [|ifso; ifnot; |] ->
+      (* one or two normal successors *)
+      let res = ref 1 in
+      if not (Label.equal ifso ifnot) then incr res;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label -> if not (Label.equal ifso other_label) && not (Label.equal ifso other_label) then incr res
+      end;
+      !res
+    | Int_test { lt; eq; gt; is_signed = _; imm = _; }
+    | Switch [|lt;eq;gt|]->
+      let res = ref 1 in
+      if not (Label.equal lt eq) then incr res;
+      if not (Label.equal lt gt) && not (Label.equal eq gt) then incr res;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label -> if not (Label.equal lt other_label) && not (Label.equal eq other_label) && not (Label.equal gt other_label) then incr res
+      end;
+      !res
+    | Float_test { lt; eq; gt; uo; }
+    | Switch [|lt;eq;gt;uo|] ->
+      (* one, two, three, or four normal successors *)
+      let res = ref 1 in
+      if not (Label.equal lt eq) then incr res;
+      if not (Label.equal lt gt) && not (Label.equal eq gt) then incr res;
+      if not (Label.equal lt uo) && not (Label.equal eq uo) && not (Label.equal gt uo) then incr res;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label -> if not (Label.equal lt other_label) && not (Label.equal eq other_label) && not (Label.equal gt other_label) && not (Label.equal uo other_label) then incr res;
+      end;
+      !res
+    | Switch labels ->
+      (* any number of normal successors - fallback to set *)
+      let seen = ref Label.Set.empty in
+      for i = 0 to pred (Array.length labels) do
+        seen := Label.Set.add labels.(i) !seen
+      done;
+      Label.Set.cardinal !seen
+  end else begin
+    (* no normal successor *)
+    if exn then begin
+      match block.exn with
+      | None -> 0
+      | Some label -> ignore label; 1
+    end else
+      0
+  end
+
+
+let iter_successor_labels ~normal ~exn block ~f =
+  if normal then begin
+    match block.terminator.desc with
+    | Never
+    | Return
+    | Raise _
+    | Tailcall_func _
+    | Call_no_return _
+    | Switch [||] (* is it legal? *) ->
+      (* no normal successor *)
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some label -> f label
+      end
+    | Always label
+    | Tailcall_self { destination = label }
+    | Call { op = _; label_after = label; }
+    | Prim { op = _; label_after = label; }
+    | Specific_can_raise { op = _; label_after = label; }
+    | Poll_and_jump label
+    | Switch [|label|]->
+      (* one normal successor *)
+      f label;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label -> if not (Label.equal label other_label) then f other_label
+      end
+    | Parity_test { ifso; ifnot; }
+    | Truth_test { ifso; ifnot; }
+    | Switch [|ifso; ifnot; |] ->
+      (* one or two normal successors *)
+      f ifso;
+      if not (Label.equal ifso ifnot) then f ifnot;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label ->
+          if not (Label.equal ifso other_label) && not (Label.equal ifnot other_label) then
+            f other_label
+      end
+    | Int_test { lt; eq; gt; is_signed = _; imm = _; }
+    | Switch [|lt;eq;gt|]->
+      (* one, two, or three normal successors *)
+      f lt;
+      if not (Label.equal lt eq) then f eq;
+      if not (Label.equal lt gt) && not (Label.equal eq gt) then f gt;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label ->
+          if not (Label.equal lt other_label) && not (Label.equal eq other_label) && not (Label.equal gt other_label) then
+            f other_label
+      end
+    | Float_test { lt; eq; gt; uo; }
+    | Switch [|lt;eq;gt;uo|] ->
+      (* one, two, three, or four normal successors *)
+      f lt;
+      if not (Label.equal lt eq) then f eq;
+      if not (Label.equal lt gt) && not (Label.equal eq gt) then f gt;
+      if not (Label.equal lt uo) && not (Label.equal eq uo) && not (Label.equal gt uo) then f uo;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label ->
+          if not (Label.equal lt other_label) && not (Label.equal eq other_label) && not (Label.equal gt other_label) && not (Label.equal uo other_label) then
+            f other_label
+      end
+    | Switch labels ->
+      (* any number of normal successors - fallback to set *)
+      let seen = ref Label.Set.empty in
+      for i = 0 to pred (Array.length labels) do
+        let label = labels.(i) in
+        if not (Label.Set.mem label !seen) then begin
+          f label;
+          seen := Label.Set.add label !seen
+        end
+      done;
+      if exn then begin
+        match block.exn with
+        | None -> ()
+        | Some other_label -> if not (Label.Set.mem other_label !seen) then f other_label
+      end
+  end else begin
+    (* no normal successor *)
+    if exn then begin
+      match block.exn with
+      | None -> ()
+      | Some label -> f label
+    end
+  end
+
+let only_normal_successor_label block =
+  match block.terminator.desc with
+    | Never
+    | Return
+    | Raise _
+    | Tailcall_func _
+    | Call_no_return _
+    | Switch [||] (* is it legal? *) ->
+      (* no normal successor *)
+      None
+    | Always label
+    | Tailcall_self { destination = label }
+    | Call { op = _; label_after = label; }
+    | Prim { op = _; label_after = label; }
+    | Specific_can_raise { op = _; label_after = label; }
+    | Poll_and_jump label
+    | Switch [|label|]->
+      (* one normal successor *)
+      Some label
+    | Parity_test { ifso; ifnot; }
+    | Truth_test { ifso; ifnot; }
+    | Switch [|ifso; ifnot; |] ->
+      (* one or two normal successors *)
+      if Label.equal ifso ifnot then Some ifso else None
+    | Int_test { lt; eq; gt; is_signed = _; imm = _; }
+    | Switch [|lt;eq;gt|]->
+      (* one, two, or three normal successors *)
+      if Label.equal lt gt && Label.equal eq gt then Some lt else None
+    | Float_test { lt; eq; gt; uo; }
+    | Switch [|lt;eq;gt;uo|] ->
+      (* one, two, three, or four normal successors *)
+      if Label.equal lt uo && Label.equal eq uo && Label.equal gt uo then Some lt else None
+    | Switch labels ->
+      (* any number of normal successors - fallback to set *)
+      let seen = ref Label.Set.empty in
+      for i = 0 to pred (Array.length labels) do
+        let label = labels.(i) in
+        seen := Label.Set.add label !seen
+      done;
+      if Label.Set.cardinal !seen = 1 then Some (Label.Set.choose !seen) else None
+
+(*
+let successor_labels ~normal ~exn block =
+  let res = successor_labels ~normal ~exn block in
+  assert (successor_labels_is_empty ~normal ~exn block = Label.Set.is_empty res); (* OK *)
+  assert (successor_labels_cardinal ~normal ~exn block = Label.Set.cardinal res); (* OK *)
+  let alt = ref Label.Set.empty in
+  iter_successor_labels ~normal ~exn block ~f:(fun label -> alt := Label.Set.add label !alt);
+  assert (Label.Set.equal res !alt); (* OK *)
+  let res_normal = successor_labels ~normal:true ~exn:false block in
+  if Label.Set.cardinal res_normal = 1 then begin
+    assert (successor_labels_cardinal ~normal:true ~exn:false block = 1); (* OK *)
+    match only_normal_successor_label block with
+    | None -> assert false (* OK *)
+    | Some label -> assert (Label.equal label (Label.Set.choose res_normal)) (* OK *)
+  end else begin
+    match only_normal_successor_label block with
+    | None -> ()
+    | Some _ -> assert false (* OK *)
+  end;
+  res
+*)
+
 let predecessor_labels block = Label.Set.elements block.predecessors
 
 let replace_successor_labels t ~normal ~exn block ~f =
@@ -194,13 +489,14 @@ let fold_blocks t ~f ~init = Label.Tbl.fold f t.blocks init
 let register_predecessors_for_all_blocks (t : t) =
   Label.Tbl.iter
     (fun label block ->
-      let targets = successor_labels ~normal:true ~exn:true block in
-      Label.Set.iter
+       iter_successor_labels ~normal:true ~exn:true block ~f:
+      (*let targets = successor_labels ~normal:true ~exn:true block in
+      Label.Set.iter*)
         (fun target ->
           let target_block = Label.Tbl.find t.blocks target in
           target_block.predecessors
             <- Label.Set.add label target_block.predecessors)
-        targets)
+        (*targets*))
     t.blocks
 
 (* Printing for debug *)

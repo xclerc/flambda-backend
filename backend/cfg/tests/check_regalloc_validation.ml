@@ -99,11 +99,11 @@ module Cfg_desc = struct
       blocks;
     Label.Tbl.iter
       (fun _ (block : Cfg.basic_block) ->
-        Cfg.successor_labels ~normal:true ~exn:false block
+         Cfg.successor_labels ~normal:true ~exn:false block (*XXX *)
         |> Label.Set.iter (fun suc ->
                let suc = Label.Tbl.find cfg.blocks suc in
                suc.predecessors <- Label.Set.add block.start suc.predecessors);
-        Cfg.successor_labels ~normal:false ~exn:true block
+        Cfg.successor_labels ~normal:false ~exn:true block (* XXX *)
         |> Label.Set.iter (fun suc ->
                let suc = Label.Tbl.find cfg.blocks suc in
                suc.predecessors <- Label.Set.add block.start suc.predecessors;

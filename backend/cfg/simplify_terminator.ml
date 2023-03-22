@@ -92,11 +92,17 @@ let block (block : C.basic_block) =
     Misc.fatal_errorf "Cannot simplify terminator: Never (in block %d)"
       block.start
   | Parity_test _ | Truth_test _ | Int_test _ | Float_test _ ->
+    begin match C.only_normal_successor_label block with
+    | None -> ()
+    | Some l -> block.terminator <- { block.terminator with desc = Always l }
+    end
+    (*
     let labels = C.successor_labels ~normal:true ~exn:false block in
     if Label.Set.cardinal labels = 1
     then
       let l = Label.Set.min_elt labels in
       block.terminator <- { block.terminator with desc = Always l }
+    *)
   | Switch labels -> simplify_switch block labels
   | Raise _ | Return | Tailcall_self _ | Tailcall_func _ | Call_no_return _
   | Poll_and_jump _

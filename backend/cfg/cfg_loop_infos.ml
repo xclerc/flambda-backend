@@ -83,6 +83,8 @@ let compute_back_edges cfg dominators =
   Cfg.fold_blocks cfg ~init:[] ~f:(fun src_label src_block acc ->
       let dst_labels =
         (* CR-soon xclerc for xclerc: probably safe to pass `~exn:false`. *)
+        (* XXX *)
+        let _ = assert false in
         Cfg.successor_labels ~normal:true ~exn:true src_block
       in
       Label.Set.fold
@@ -101,7 +103,7 @@ let compute_loop_of_back_edge cfg { Edge.src; dst } =
     | [] -> acc
     | hd :: tl ->
       let block = Cfg.get_block_exn cfg hd in
-      let predecessor_labels = Cfg.predecessor_labels block in
+      let predecessor_labels = Cfg.predecessor_labels block in (* XXX  *)
       let stack, acc =
         List.fold_left predecessor_labels ~init:(tl, acc)
           ~f:(fun (stack, acc) predecessor_label ->

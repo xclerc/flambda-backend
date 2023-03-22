@@ -29,14 +29,13 @@ module CL = Cfg_with_layout
 module L = Linear
 module DLL = Flambda_backend_utils.Doubly_linked_list
 
-let to_linear_instr ?(like : _ Cfg.instruction option) desc ~next :
+let[@inline] to_linear_instr ?(like : _ Cfg.instruction option) desc ~next :
     L.instruction =
-  let arg, res, dbg, live, fdo =
     match like with
-    | None -> [||], [||], Debuginfo.none, Reg.Set.empty, Fdo_info.none
-    | Some like -> like.arg, like.res, like.dbg, like.live, like.fdo
-  in
-  { desc; next; arg; res; dbg; live; fdo }
+    | None ->
+      { desc; next; arg = [||]; res = [||]; dbg = Debuginfo.none; live = Reg.Set.empty; fdo = Fdo_info.none}
+    | Some like ->
+      { desc; next; arg = like.arg; res = like.res; dbg = like.dbg; live = like.live; fdo = like.fdo}
 
 let basic_to_linear (i : _ Cfg.instruction) ~next =
   let desc = Cfg_to_linear_desc.from_basic i.desc in
@@ -64,20 +63,20 @@ let mk_int_test ~lt ~eq ~gt : Cmm.integer_comparison =
    appears last, after all other conditional jumps. *)
 type float_cond =
   | Must_be_last
-  | Any of Cmm.float_comparison list
+  | Any of Cmm.float_comparison (*list*)
 
 let mk_float_cond ~lt ~eq ~gt ~uo =
   match eq, lt, gt, uo with
-  | true, false, false, false -> Any [CFeq]
-  | false, true, false, false -> Any [CFlt]
-  | false, false, true, false -> Any [CFgt]
-  | true, true, false, false -> Any [CFle]
-  | true, false, true, false -> Any [CFge]
-  | false, true, true, true -> Any [CFneq]
-  | true, false, true, true -> Any [CFnlt]
-  | true, true, false, true -> Any [CFngt]
-  | false, false, true, true -> Any [CFnle]
-  | false, true, false, true -> Any [CFnge]
+  | true, false, false, false -> Any CFeq
+  | false, true, false, false -> Any CFlt
+  | false, false, true, false -> Any CFgt
+  | true, true, false, false -> Any CFle
+  | true, false, true, false -> Any CFge
+  | false, true, true, true -> Any CFneq
+  | true, false, true, true -> Any CFnlt
+  | true, true, false, true -> Any CFngt
+  | false, false, true, true -> Any CFnle
+  | false, true, false, true -> Any CFnge
   | true, true, true, true -> assert false (* unconditional jump *)
   | false, false, false, false -> assert false (* no successors *)
   | true, true, true, false ->
@@ -116,8 +115,7 @@ let linearize_terminator cfg_with_layout func start
   (* If one of the successors is a fallthrough label, do not emit a jump for it.
      Otherwise, the last jump is unconditional. *)
   let branch_or_fallthrough d lbl =
-    if cross_section cfg_with_layout start lbl
-       || not (Label.equal next.label lbl)
+    if not (Label.equal next.label lbl) || cross_section cfg_with_layout start lbl
     then d @ [L.Lbranch lbl]
     else d
   in
@@ -131,8 +129,8 @@ let linearize_terminator cfg_with_layout func start
     (* c1 must be the inverse of c2 *)
     match Label.equal l1 next.label, Label.equal l2 next.label with
     | true, true -> branch_or_fallthrough_next
-    | false, true -> [L.Lcondbranch (c1, l1)] @ branch_or_fallthrough_next
-    | true, false -> [L.Lcondbranch (c2, l2)] @ branch_or_fallthrough_next
+    | false, true -> (L.Lcondbranch (c1, l1)) :: branch_or_fallthrough_next
+    | true, false -> (L.Lcondbranch (c2, l2)) :: branch_or_fallthrough_next
     | false, false ->
       if Label.equal l1 l2
       then [L.Lbranch l1]
@@ -197,10 +195,11 @@ let linearize_terminator cfg_with_layout func start
                   ~gt:(Label.equal gt lbl) ~uo:(Label.equal uo lbl)
               in
               match cond with
-              | Any cl ->
-                let l = List.map (fun c -> c, lbl) cl in
-                must_be_last, l @ any
-              | Must_be_last -> lbl :: must_be_last, any)
+              | Any c ->
+                (*let l = List.map (fun c -> c, lbl) cl in*)
+                must_be_last, (c, lbl) :: any
+              | Must_be_last ->
+                lbl :: must_be_last, any)
             successor_labels ([], [])
         in
         let last =
@@ -339,7 +338,10 @@ let adjust_stack_offset body (block : Cfg.basic_block)
     to_linear_instr (Ladjust_stack_offset { delta_bytes }) ~next:body
 
 let make_Llabel cfg_with_layout label =
-  Linear.Llabel { label; section_name = CL.get_section cfg_with_layout label }
+  Linear.Llabel { label; section_name =
+                           if !Flambda_backend_flags.basic_block_sections then
+                             CL.get_section cfg_with_layout label
+                           else None }
 
 (* CR-someday gyorsh: handle duplicate labels in new layout: print the same
    block more than once. *)
