@@ -21,6 +21,7 @@
 
 #ifdef CAML_INTERNALS
 
+#include <stdbool.h>
 #include "misc.h"
 #include "mlvalues.h"
 #include "roots.h"
@@ -257,7 +258,7 @@ struct stack_info* caml_alloc_stack_noexc(mlsize_t wosize, value hval,
 /* try to grow the stack until at least required_size words are available.
    returns nonzero on success */
 CAMLextern int caml_try_realloc_stack (asize_t required_wsize);
-CAMLextern uintnat caml_get_init_stack_wsize(void);
+CAMLextern uintnat caml_get_init_stack_wsize(bool is_main_thread);
 void caml_change_max_stack_size (uintnat new_max_wsize);
 void caml_maybe_expand_stack(void);
 CAMLextern void caml_free_stack(struct stack_info* stk);

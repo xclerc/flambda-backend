@@ -49,9 +49,10 @@
 
 static _Atomic int64_t fiber_id = 0;
 
-uintnat caml_get_init_stack_wsize (void)
+// XXX rename this one to "main", and have a "thread" variant
+uintnat caml_get_init_stack_wsize (bool is_main_thread)
 {
-  uintnat init_stack_wsize = caml_params->init_stack_wsz;
+  uintnat init_stack_wsize = is_main_thread ? caml_params->init_main_stack_wsz : caml_params->init_thread_stack_wsz;
   uintnat stack_wsize;
 
   if (init_stack_wsize < caml_max_stack_wsize)

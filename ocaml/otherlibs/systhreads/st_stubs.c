@@ -359,7 +359,7 @@ static caml_thread_t caml_thread_new_info(void)
 {
   caml_thread_t th;
   caml_domain_state *domain_state;
-  uintnat stack_wsize = caml_get_init_stack_wsize();
+  uintnat stack_wsize = caml_get_init_stack_wsize(false);
 
   domain_state = Caml_state;
   th = NULL;
