@@ -92,9 +92,14 @@ AC_ARG_ENABLE([runtime5],
   [AS_HELP_STRING([--enable-runtime5],
     [Use the OCaml 5 runtime])])
 
+AC_ARG_ENABLE([stack_checks],
+  [AS_HELP_STRING([--enable-stack_checks],
+    [XXX])])
+
 ## Output variables
 
 AC_SUBST([enable_runtime5])
+AC_SUBST([enable_stack_checks])
 AC_SUBST([CONFIGURE_ARGS])
 AC_SUBST([native_compiler])
 AC_SUBST([default_build_target])

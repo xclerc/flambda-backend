@@ -119,3 +119,4 @@ let ar_supports_response_files = @ar_supports_response_files@
 
 let naked_pointers = "@naked_pointers@" = "true"
 let runtime5 = "@enable_runtime5@" = "yes"
+let no_stack_checks = "@enable_stack_checks@" <> "yes"

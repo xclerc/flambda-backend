@@ -283,6 +283,9 @@ val runtime5 : bool
 (** [true] if using the OCaml 5.x runtime, [false] if using the
     OCaml 4.14 runtime. *)
 
+val no_stack_checks : bool
+(** XXX *)
+
 (** Access to configuration values *)
 val print_config : out_channel -> unit
 

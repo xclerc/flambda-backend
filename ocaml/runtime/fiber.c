@@ -51,11 +51,11 @@ static _Atomic int64_t fiber_id = 0;
 
 uintnat caml_get_init_stack_wsize (void)
 {
-  uintnat default_stack_wsize = Wsize_bsize(Stack_init_bsize);
+  uintnat init_stack_wsize = caml_params->init_stack_wsz;
   uintnat stack_wsize;
 
-  if (default_stack_wsize < caml_max_stack_wsize)
-    stack_wsize = default_stack_wsize;
+  if (init_stack_wsize < caml_max_stack_wsize)
+    stack_wsize = init_stack_wsize;
   else
     stack_wsize = caml_max_stack_wsize;
 
@@ -97,8 +97,12 @@ struct stack_info** caml_alloc_stack_cache (void)
 
 Caml_inline struct stack_info* alloc_for_stack (mlsize_t wosize)
 {
+  size_t bsize = sizeof(value) * wosize;
+  int page_size = getpagesize();
+  bsize = ((bsize + page_size + page_size + 1) / page_size) * page_size;
+
   size_t len = sizeof(struct stack_info) +
-               sizeof(value) * wosize +
+               bsize +
                8 /* for alignment to 16-bytes, needed for arm64 */ +
                sizeof(struct stack_handler);
 #ifdef USE_MMAP_MAP_STACK
@@ -111,7 +115,11 @@ Caml_inline struct stack_info* alloc_for_stack (mlsize_t wosize)
   si->size = len;
   return si;
 #else
-  return caml_stat_alloc_noexc(len);
+  void* block = aligned_alloc(getpagesize(), len);
+  if (block == NULL) return NULL;
+  int protect = mprotect(block + bsize - page_size, page_size, PROT_NONE);
+  if (protect) return NULL; // XXX
+  return block;
 #endif /* USE_MMAP_MAP_STACK */
 }
 

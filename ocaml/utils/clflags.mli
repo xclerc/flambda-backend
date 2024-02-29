@@ -257,6 +257,7 @@ end
 
 module Compiler_pass : sig
   type t = Parsing | Typing | Lambda
+         | Middle_end
          | Scheduling | Emit | Simplify_cfg | Selection
   val of_string : string -> t option
   val to_string : t -> string

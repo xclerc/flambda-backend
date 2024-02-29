@@ -46,6 +46,7 @@ struct caml_params {
   uintnat init_custom_minor_ratio;
   uintnat init_custom_minor_max_bsz;
 
+  uintnat init_stack_wsz;
   uintnat init_max_stack_wsz;
 
   uintnat backtrace_enabled;

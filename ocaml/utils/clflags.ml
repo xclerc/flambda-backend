@@ -510,12 +510,14 @@ module Compiler_pass = struct
      - the manual manual/src/cmds/unified-options.etex
   *)
   type t = Parsing | Typing | Lambda
+         | Middle_end
          | Scheduling | Emit | Simplify_cfg | Selection
 
   let to_string = function
     | Parsing -> "parsing"
     | Typing -> "typing"
     | Lambda -> "lambda"
+    | Middle_end -> "middle_end"
     | Scheduling -> "scheduling"
     | Emit -> "emit"
     | Simplify_cfg -> "simplify_cfg"
@@ -525,6 +527,7 @@ module Compiler_pass = struct
     | "parsing" -> Some Parsing
     | "typing" -> Some Typing
     | "lambda" -> Some Lambda
+    | "middle_end" -> Some Middle_end
     | "scheduling" -> Some Scheduling
     | "emit" -> Some Emit
     | "simplify_cfg" -> Some Simplify_cfg
@@ -535,6 +538,7 @@ module Compiler_pass = struct
     | Parsing -> 0
     | Typing -> 1
     | Lambda -> 2
+    | Middle_end -> 3
     | Selection -> 20
     | Simplify_cfg -> 49
     | Scheduling -> 50
@@ -544,6 +548,7 @@ module Compiler_pass = struct
     Parsing;
     Typing;
     Lambda;
+    Middle_end;
     Scheduling;
     Emit;
     Simplify_cfg;
@@ -555,6 +560,7 @@ module Compiler_pass = struct
     | Emit -> true
     | Simplify_cfg -> true
     | Selection -> true
+    | Middle_end -> true
     | Parsing | Typing | Lambda -> false
 
   let enabled is_native t = not (is_native_only t) || is_native
@@ -562,6 +568,7 @@ module Compiler_pass = struct
     | Scheduling -> true
     | Simplify_cfg -> true
     | Selection -> true
+    | Middle_end -> false
     | Parsing | Typing | Lambda | Emit -> false
 
   let available_pass_names ~filter ~native =
@@ -578,6 +585,7 @@ module Compiler_pass = struct
     | Scheduling -> prefix ^ Compiler_ir.(extension Linear)
     | Simplify_cfg -> prefix ^ Compiler_ir.(extension Cfg)
     | Selection -> prefix ^ Compiler_ir.(extension Cfg) ^ "-sel"
+    | Middle_end
     | Emit | Parsing | Typing | Lambda -> Misc.fatal_error "Not supported"
 
   let of_input_filename name =
