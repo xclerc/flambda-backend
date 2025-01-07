@@ -74,14 +74,23 @@ module Interval : sig
 
     val insert_sorted : t list -> t -> t list
   end
+
+  module DLL : sig
+    val release_expired_fixed : t DLL.t -> pos:int -> unit
+
+    val insert_sorted : t DLL.t -> t -> unit
+  end
 end
 
 module ClassIntervals : sig
-  (* Similar to [Linscan.class_intervals] (in "backend/linscan.mln"). *)
+  (* Similar to [Linscan.class_intervals] (in "backend/linscan.ml"). *)
   type t =
-    { mutable fixed : Interval.t list;
-      mutable active : Interval.t list;
-      mutable inactive : Interval.t list
+    { mutable fixed_list : Interval.t list;
+      mutable active_list : Interval.t list;
+      mutable inactive_list : Interval.t list;
+      fixed_dll : Interval.t DLL.t;
+      active_dll : Interval.t DLL.t;
+      inactive_dll : Interval.t DLL.t
     }
 
   val make : unit -> t
@@ -93,8 +102,12 @@ module ClassIntervals : sig
   val clear : t -> unit
 
   val release_expired_intervals : t -> pos:int -> unit
+
+  val check_consistency : t -> unit
 end
 
 val log_interval : indent:int -> kind:string -> Interval.t -> unit
 
-val log_intervals : indent:int -> kind:string -> Interval.t list -> unit
+val log_interval_list : indent:int -> kind:string -> Interval.t list -> unit
+
+val log_interval_dll : indent:int -> kind:string -> Interval.t DLL.t -> unit

@@ -31,6 +31,9 @@ open Simple_operation
 open Linear
 open Emitaux
 
+let emit_printf fmt = Printf.fprintf !output_channel fmt
+let (!$) = emit_printf
+
 (* Tradeoff between code size and code speed *)
 
 let fastcode_flag = ref true
@@ -62,6 +65,8 @@ let emit_symbol s =
   if macosx then emit_string "_";
   Emitaux.emit_symbol s
 
+let emit_symbol' _ _ = ()
+
 (* Object types *)
 
 let emit_symbol_type emit_lbl_or_sym lbl_or_sym ty =
@@ -72,7 +77,7 @@ let emit_symbol_type emit_lbl_or_sym lbl_or_sym ty =
 
 let emit_symbol_size sym =
   if not macosx then begin
-    `	.size	{emit_symbol sym}, .-{emit_symbol sym}\n`
+    !$"	.size	%a, .-{%a}\n" emit_symbol' sym emit_symbol' sym
   end
 
 (* Output a pseudo-register *)

@@ -84,3 +84,9 @@ val to_list : 'a t -> 'a list
 val transfer : to_:'a t -> from:'a t -> unit -> unit
 
 val map : 'a t -> f:('a -> 'b) -> 'b t
+
+val copy : 'a t -> 'a t
+
+val cut : 'a cell -> unit
+
+val equal : ('a -> 'a -> bool) -> 'a t -> 'a t -> bool

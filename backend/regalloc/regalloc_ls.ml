@@ -143,7 +143,7 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
         available.(idx) <- false;
         if !num_still_available = 0 then raise No_free_register
       in
-      List.iter intervals.active ~f:(fun (interval : Interval.t) ->
+      List.iter intervals.active_list ~f:(fun (interval : Interval.t) ->
           match interval.reg.loc with
           | Reg r ->
             if r - first_available < num_available_registers
@@ -158,8 +158,8 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
           then set_not_available r
         | Stack _ | Unknown -> ()
       in
-      List.iter intervals.inactive ~f:remove_bound_overlapping;
-      List.iter intervals.fixed ~f:remove_bound_overlapping;
+      List.iter intervals.inactive_list ~f:remove_bound_overlapping;
+      List.iter intervals.fixed_list ~f:remove_bound_overlapping;
       let rec assign idx =
         if idx >= num_available_registers
         then Misc.fatal_error "No_free_register should have been raised earlier"
@@ -167,8 +167,8 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
         then (
           reg.loc <- Reg (first_available + idx);
           reg.spill <- false;
-          intervals.active
-            <- Interval.List.insert_sorted intervals.active interval;
+          intervals.active_list
+            <- Interval.List.insert_sorted intervals.active_list interval;
           if ls_debug
           then log ~indent:3 "assigning %d to register %a" idx Printreg.reg reg;
           Not_spilling)
@@ -182,7 +182,7 @@ let allocate_blocked_register : State.t -> Interval.t -> spilling_reg =
   let reg = interval.reg in
   let reg_class = Proc.register_class reg in
   let intervals = State.active state ~reg_class in
-  match intervals.active with
+  match intervals.active_list with
   | hd :: tl ->
     let chk r =
       assert (same_reg_class r.Interval.reg hd.Interval.reg);
@@ -190,12 +190,12 @@ let allocate_blocked_register : State.t -> Interval.t -> spilling_reg =
     in
     if hd.end_ > interval.end_
        && not
-            (List.exists ~f:chk intervals.fixed
-            || List.exists ~f:chk intervals.inactive)
+            (List.exists ~f:chk intervals.fixed_list
+            || List.exists ~f:chk intervals.inactive_list)
     then (
       (match hd.reg.loc with Reg _ -> () | Stack _ | Unknown -> assert false);
       interval.reg.loc <- hd.reg.loc;
-      intervals.active <- Interval.List.insert_sorted tl interval;
+      intervals.active_list <- Interval.List.insert_sorted tl interval;
       allocate_stack_slot hd.reg)
     else allocate_stack_slot reg
   | [] -> allocate_stack_slot reg

@@ -4,7 +4,7 @@ open! Regalloc_utils
 open! Regalloc_ls_utils
 
 type t =
-  { mutable intervals : Interval.t list;
+  { mutable intervals : Interval.t list; (* XXX? *)
     active : ClassIntervals.t array;
     stack_slots : Regalloc_stack_slots.t;
     mutable next_instruction_id : Instruction.id
@@ -30,20 +30,23 @@ let[@inline] update_intervals state map =
            match reg.loc with
            | Reg _ ->
              let reg_class = Proc.register_class reg in
-             active.(reg_class).fixed <- interval :: active.(reg_class).fixed;
+             active.(reg_class).fixed_list
+               <- interval :: active.(reg_class).fixed_list;
+             (* XXX DLL.add_begin active.(reg_class).fixed interval; *)
              acc
            | Stack _ | Unknown -> interval :: acc)
          map []
        |> List.sort ~cmp:(fun (left : Interval.t) (right : Interval.t) ->
               Int.compare left.begin_ right.begin_);
-  if ls_debug then log_intervals ~indent:1 ~kind:"regular" state.intervals;
+  if ls_debug then log_interval_list ~indent:1 ~kind:"regular" state.intervals;
   Array.iter active ~f:(fun (intervals : ClassIntervals.t) ->
-      intervals.fixed
+      intervals.fixed_list
         <- List.sort
              ~cmp:(fun (left : Interval.t) (right : Interval.t) ->
                Int.compare right.end_ left.end_)
-             intervals.fixed;
-      if ls_debug then log_intervals ~indent:1 ~kind:"fixed" intervals.fixed)
+             intervals.fixed_list;
+      if ls_debug
+      then log_interval_list ~indent:1 ~kind:"fixed" intervals.fixed_list)
 
 let[@inline] iter_intervals state ~f = List.iter state.intervals ~f
 
@@ -151,7 +154,7 @@ let[@inline] invariant_intervals state cfg_with_infos =
       (Cfg_with_infos.cfg_with_layout cfg_with_infos)
       ~instruction:check_instr ~terminator:check_instr)
 
-let invariant_active_field (reg_class : int) (field_name : string)
+let invariant_field_list (reg_class : int) (field_name : string)
     (l : Interval.t list) =
   let rec is prev l =
     match l with
@@ -160,19 +163,43 @@ let invariant_active_field (reg_class : int) (field_name : string)
       if hd.Interval.end_ > prev.Interval.end_
       then
         fatal
-          "Regalloc_ls_state.invariant_active_field: active.(%d).%s is not \
-           sorted"
+          "Regalloc_ls_state.invariant_field_list: active.(%d).%s is not sorted"
           reg_class field_name
       else is hd tl
   in
   match l with [] -> () | hd :: tl -> is hd tl
 
+let invariant_field_dll (reg_class : int) (field_name : string)
+    (l : Interval.t DLL.t) =
+  let rec is prev curr =
+    match curr with
+    | None -> ()
+    | Some cell ->
+      let value = DLL.value cell in
+      if value.Interval.end_ > prev.Interval.end_
+      then
+        fatal
+          "Regalloc_ls_state.invariant_field_dll: active.(%d).%s is not sorted"
+          reg_class field_name
+      else is value (DLL.next cell)
+  in
+  match DLL.hd_cell l with
+  | None -> ()
+  | Some cell -> is (DLL.value cell) (DLL.next cell)
+
 let[@inline] invariant_active state =
   if ls_debug && Lazy.force ls_invariants
   then
     Array.iteri state.active ~f:(fun reg_class intervals ->
-        invariant_active_field reg_class "fixed " intervals.ClassIntervals.fixed;
-        invariant_active_field reg_class "active "
-          intervals.ClassIntervals.active;
-        invariant_active_field reg_class "inactive "
-          intervals.ClassIntervals.inactive)
+        invariant_field_list reg_class "fixed "
+          intervals.ClassIntervals.fixed_list;
+        invariant_field_list reg_class "active "
+          intervals.ClassIntervals.active_list;
+        invariant_field_list reg_class "inactive "
+          intervals.ClassIntervals.inactive_list;
+        invariant_field_dll reg_class "fixed "
+          intervals.ClassIntervals.fixed_dll;
+        invariant_field_dll reg_class "active "
+          intervals.ClassIntervals.active_dll;
+        invariant_field_dll reg_class "inactive "
+          intervals.ClassIntervals.inactive_dll)
