@@ -256,24 +256,6 @@ module ClassIntervals = struct
     in
     aux eq list (DLL.hd_cell dll)
 
-  let make () =
-    { fixed_list = [];
-      active_list = [];
-      inactive_list = [];
-      fixed_dll = DLL.make_empty ();
-      active_dll = DLL.make_empty ();
-      inactive_dll = DLL.make_empty ()
-    }
-
-  let copy t =
-    { fixed_list = List.map t.fixed_list ~f:Interval.copy;
-      active_list = List.map t.active_list ~f:Interval.copy;
-      inactive_list = List.map t.inactive_list ~f:Interval.copy;
-      fixed_dll = DLL.map t.fixed_dll ~f:Interval.copy;
-      active_dll = DLL.map t.active_dll ~f:Interval.copy;
-      inactive_dll = DLL.map t.inactive_dll ~f:Interval.copy
-    }
-
   let print ppf t =
     Format.fprintf ppf "fixed_list: %a\n" Interval.List.print t.fixed_list;
     Format.fprintf ppf "active_list: %a\n" Interval.List.print t.active_list;
@@ -300,13 +282,41 @@ module ClassIntervals = struct
          (consistent_fixed=%B consistent_active=%B consistent_inactive=%B)"
         consistent_fixed consistent_active consistent_inactive)
 
+  let make () =
+    let res =
+      { fixed_list = [];
+        active_list = [];
+        inactive_list = [];
+        fixed_dll = DLL.make_empty ();
+        active_dll = DLL.make_empty ();
+        inactive_dll = DLL.make_empty ()
+      }
+    in
+    check_consistency res;
+    res
+
+  let copy t =
+    check_consistency t;
+    let res =
+      { fixed_list = List.map t.fixed_list ~f:Interval.copy;
+        active_list = List.map t.active_list ~f:Interval.copy;
+        inactive_list = List.map t.inactive_list ~f:Interval.copy;
+        fixed_dll = DLL.map t.fixed_dll ~f:Interval.copy;
+        active_dll = DLL.map t.active_dll ~f:Interval.copy;
+        inactive_dll = DLL.map t.inactive_dll ~f:Interval.copy
+      }
+    in
+    check_consistency res;
+    res
+
   let clear t =
     t.fixed_list <- [];
     t.active_list <- [];
     t.inactive_list <- [];
     DLL.clear t.fixed_dll;
     DLL.clear t.active_dll;
-    DLL.clear t.inactive_dll
+    DLL.clear t.inactive_dll;
+    check_consistency t
 
   module List = struct
     let rec release_expired_active t ~pos l =
@@ -388,7 +398,8 @@ module ClassIntervals = struct
     t.inactive_list <- List.release_expired_inactive t ~pos t.inactive_list;
     Interval.DLL.release_expired_fixed t.fixed_dll ~pos;
     DLL.release_expired_active t ~pos t.active_dll;
-    DLL.release_expired_inactive t ~pos t.inactive_dll
+    DLL.release_expired_inactive t ~pos t.inactive_dll;
+    check_consistency t
 end
 
 let log_interval ~indent ~kind (interval : Interval.t) =
@@ -409,5 +420,3 @@ let log_interval_list ~indent ~kind (intervals : Interval.t list) =
 let log_interval_dll ~indent ~kind (intervals : Interval.t DLL.t) =
   DLL.iter intervals ~f:(fun (interval : Interval.t) ->
       log_interval ~indent ~kind interval)
-
-(* let f () : unit = let ( !$ ) = Format.eprintf in !$"a" *)
