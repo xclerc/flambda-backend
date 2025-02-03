@@ -137,18 +137,20 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
     | num_available_registers ->
       let available = Array.make num_available_registers true in
       let num_still_available = ref num_available_registers in
-      let set_not_available r =
+      let set_not_available (r : int) : unit =
         let idx = r - first_available in
         if available.(idx) then decr num_still_available;
         available.(idx) <- false;
         if !num_still_available = 0 then raise No_free_register
       in
-      List.iter intervals.active ~f:(fun (interval : Interval.t) ->
-          match interval.reg.loc with
-          | Reg r ->
-            if r - first_available < num_available_registers
-            then set_not_available r
-          | Stack _ | Unknown -> ());
+      let set_not_available_if_valid_phys_reg (interval : Interval.t) : unit =
+        match interval.reg.loc with
+        | Reg r ->
+          if r - first_available < num_available_registers
+          then set_not_available r
+        | Stack _ | Unknown -> ()
+      in
+      DLL.iter intervals.active_dll ~f:set_not_available_if_valid_phys_reg;
       let remove_bound_overlapping (itv : Interval.t) : unit =
         match itv.reg.loc with
         | Reg r ->
@@ -158,8 +160,8 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
           then set_not_available r
         | Stack _ | Unknown -> ()
       in
-      List.iter intervals.inactive ~f:remove_bound_overlapping;
-      List.iter intervals.fixed ~f:remove_bound_overlapping;
+      DLL.iter intervals.inactive_dll ~f:remove_bound_overlapping;
+      DLL.iter intervals.fixed_dll ~f:remove_bound_overlapping;
       let rec assign idx =
         if idx >= num_available_registers
         then Misc.fatal_error "No_free_register should have been raised earlier"
@@ -167,8 +169,7 @@ let allocate_free_register : State.t -> Interval.t -> spilling_reg =
         then (
           reg.loc <- Reg (first_available + idx);
           reg.spill <- false;
-          intervals.active
-            <- Interval.List.insert_sorted intervals.active interval;
+          Interval.DLL.insert_sorted intervals.active_dll interval;
           if ls_debug
           then log ~indent:3 "assigning %d to register %a" idx Printreg.reg reg;
           Not_spilling)
@@ -182,23 +183,28 @@ let allocate_blocked_register : State.t -> Interval.t -> spilling_reg =
   let reg = interval.reg in
   let reg_class = Proc.register_class reg in
   let intervals = State.active state ~reg_class in
-  match intervals.active with
-  | hd :: tl ->
+  match DLL.hd_cell intervals.active_dll with
+  | Some hd_cell ->
+    let hd = DLL.value hd_cell in
     let chk r =
       assert (same_reg_class r.Interval.reg hd.Interval.reg);
       Reg.same_loc r.Interval.reg hd.Interval.reg && Interval.overlap r interval
     in
     if hd.end_ > interval.end_
        && not
-            (List.exists ~f:chk intervals.fixed
-            || List.exists ~f:chk intervals.inactive)
+            (DLL.exists ~f:chk intervals.fixed_dll
+            || DLL.exists ~f:chk intervals.inactive_dll)
     then (
       (match hd.reg.loc with Reg _ -> () | Stack _ | Unknown -> assert false);
       interval.reg.loc <- hd.reg.loc;
-      intervals.active <- Interval.List.insert_sorted tl interval;
+      (match DLL.hd_cell intervals.active_dll with
+      | None -> assert false
+      | Some cell ->
+        DLL.delete_curr cell;
+        Interval.DLL.insert_sorted intervals.active_dll interval);
       allocate_stack_slot hd.reg)
     else allocate_stack_slot reg
-  | [] -> allocate_stack_slot reg
+  | None -> allocate_stack_slot reg
 
 let reg_reinit () =
   List.iter (Reg.all_registers ()) ~f:(fun (reg : Reg.t) ->
@@ -261,7 +267,7 @@ let run : Cfg_with_infos.t -> Cfg_with_infos.t =
             Array.iteri active ~f:(fun i a ->
                 Format.eprintf "class %d:\n %a\n" i ClassIntervals.print a);
             Format.eprintf "\n\nintervals:\n";
-            List.iter intervals ~f:(fun i ->
+            DLL.iter intervals ~f:(fun i ->
                 Format.eprintf "- %a\n" Interval.print i);
             Format.eprintf "\n%!")
           !snapshot_for_fatal;

@@ -59,6 +59,8 @@ module Interval : sig
       ranges : Range.t DLL.t
     }
 
+  val equal : t -> t -> bool
+
   val copy : t -> t
 
   val print : Format.formatter -> t -> unit
@@ -70,18 +72,28 @@ module Interval : sig
   val remove_expired : t -> pos:int -> unit
 
   module List : sig
+    val print : Format.formatter -> t list -> unit
+
     val release_expired_fixed : t list -> pos:int -> t list
 
     val insert_sorted : t list -> t -> t list
   end
+
+  module DLL : sig
+    val print : Format.formatter -> t DLL.t -> unit
+
+    val release_expired_fixed : t DLL.t -> pos:int -> unit
+
+    val insert_sorted : t DLL.t -> t -> unit
+  end
 end
 
 module ClassIntervals : sig
-  (* Similar to [Linscan.class_intervals] (in "backend/linscan.mln"). *)
+  (* Similar to [Linscan.class_intervals] (in "backend/linscan.ml"). *)
   type t =
-    { mutable fixed : Interval.t list;
-      mutable active : Interval.t list;
-      mutable inactive : Interval.t list
+    { fixed_dll : Interval.t DLL.t;
+      active_dll : Interval.t DLL.t;
+      inactive_dll : Interval.t DLL.t
     }
 
   val make : unit -> t
@@ -97,4 +109,4 @@ end
 
 val log_interval : indent:int -> kind:string -> Interval.t -> unit
 
-val log_intervals : indent:int -> kind:string -> Interval.t list -> unit
+val log_interval_dll : indent:int -> kind:string -> Interval.t DLL.t -> unit

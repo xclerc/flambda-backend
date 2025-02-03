@@ -2,10 +2,11 @@
 
 open! Regalloc_utils
 open! Regalloc_ls_utils
+module DLL = Flambda_backend_utils.Doubly_linked_list
 
 type t
 
-val for_fatal : t -> Interval.t list * ClassIntervals.t array
+val for_fatal : t -> Interval.t DLL.t * ClassIntervals.t array
 
 val make :
   stack_slots:Regalloc_stack_slots.t -> next_instruction_id:Instruction.id -> t

@@ -71,7 +71,7 @@ let emit_symbol_type emit_lbl_or_sym lbl_or_sym ty =
 
 let emit_symbol_size sym =
   if not macosx then begin
-    `	.size	{emit_symbol sym}, .-{emit_symbol sym}\n`
+    `  .size   {emit_symbol sym}, .-{emit_symbol sym}\n`
   end
 
 (* Output a pseudo-register *)

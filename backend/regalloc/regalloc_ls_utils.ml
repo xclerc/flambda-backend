@@ -89,6 +89,9 @@ module Range = struct
       mutable end_ : int
     }
 
+  let equal left right =
+    Int.equal left.begin_ right.begin_ && Int.equal left.end_ right.end_
+
   let copy r = { begin_ = r.begin_; end_ = r.end_ }
 
   let print ppf r = Format.fprintf ppf "[%d,%d]" r.begin_ r.end_
@@ -152,6 +155,12 @@ module Interval = struct
       ranges : Range.t DLL.t
     }
 
+  let equal left right =
+    Reg.same left.reg right.reg
+    && Int.equal left.begin_ right.begin_
+    && Int.equal left.end_ right.end_
+    && DLL.equal Range.equal left.ranges right.ranges
+
   let copy t =
     { reg = t.reg;
       begin_ = t.begin_;
@@ -193,65 +202,120 @@ module Interval = struct
         then interval :: l
         else hd :: insert_sorted tl interval
   end
+
+  module DLL = struct
+    let print ppf l =
+      DLL.iter l ~f:(fun i -> Format.fprintf ppf "- %a\n" print i)
+
+    let release_expired_fixed l ~pos =
+      let rec aux curr ~pos =
+        match curr with
+        | None -> ()
+        | Some cell ->
+          let value = DLL.value cell in
+          if value.end_ >= pos
+          then (
+            remove_expired value ~pos;
+            aux (DLL.next cell) ~pos)
+          else DLL.cut cell
+      in
+      aux (DLL.hd_cell l) ~pos
+
+    let insert_sorted (l : t DLL.t) (interval : t) : unit =
+      let rec aux l interval curr =
+        match curr with
+        | None -> DLL.add_end l interval
+        | Some cell ->
+          let value = DLL.value cell in
+          if value.end_ <= interval.end_
+          then DLL.insert_before cell interval
+          else aux l interval (DLL.next cell)
+      in
+      aux l interval (DLL.hd_cell l)
+  end
 end
 
 module ClassIntervals = struct
   type t =
-    { mutable fixed : Interval.t list;
-      mutable active : Interval.t list;
-      mutable inactive : Interval.t list
-    }
-
-  let make () = { fixed = []; active = []; inactive = [] }
-
-  let copy t =
-    { fixed = List.map t.fixed ~f:Interval.copy;
-      active = List.map t.active ~f:Interval.copy;
-      inactive = List.map t.inactive ~f:Interval.copy
+    { fixed_dll : Interval.t DLL.t;
+      active_dll : Interval.t DLL.t;
+      inactive_dll : Interval.t DLL.t
     }
 
   let print ppf t =
-    Format.fprintf ppf "fixed: %a\n" Interval.List.print t.fixed;
-    Format.fprintf ppf "active: %a\n" Interval.List.print t.active;
-    Format.fprintf ppf "inactive: %a\n" Interval.List.print t.inactive
+    Format.fprintf ppf "fixed_dll(%d): %a\n" (DLL.length t.fixed_dll)
+      Interval.DLL.print t.fixed_dll;
+    Format.fprintf ppf "active_dll(%d): %a\n" (DLL.length t.active_dll)
+      Interval.DLL.print t.active_dll;
+    Format.fprintf ppf "inactive_dll(%d): %a\n"
+      (DLL.length t.inactive_dll)
+      Interval.DLL.print t.inactive_dll
+
+  let make () =
+    { fixed_dll = DLL.make_empty ();
+      active_dll = DLL.make_empty ();
+      inactive_dll = DLL.make_empty ()
+    }
+
+  let copy t =
+    { fixed_dll = DLL.map t.fixed_dll ~f:Interval.copy;
+      active_dll = DLL.map t.active_dll ~f:Interval.copy;
+      inactive_dll = DLL.map t.inactive_dll ~f:Interval.copy
+    }
 
   let clear t =
-    t.fixed <- [];
-    t.active <- [];
-    t.inactive <- []
+    DLL.clear t.fixed_dll;
+    DLL.clear t.active_dll;
+    DLL.clear t.inactive_dll
 
-  let rec release_expired_active t ~pos l =
-    match l with
-    | [] -> []
-    | hd :: tl ->
-      if hd.Interval.end_ >= pos
-      then (
-        Interval.remove_expired hd ~pos;
-        if Interval.is_live hd ~pos
-        then hd :: release_expired_active t ~pos tl
-        else (
-          t.inactive <- Interval.List.insert_sorted t.inactive hd;
-          release_expired_active t ~pos tl))
-      else []
+  module DLL = struct
+    let release_expired_active (t : t) ~(pos : int) (l : Interval.t DLL.t) :
+        unit =
+      let rec aux t ~pos curr : unit =
+        match curr with
+        | None -> ()
+        | Some cell ->
+          let value = DLL.value cell in
+          if value.Interval.end_ >= pos
+          then (
+            Interval.remove_expired value ~pos;
+            if Interval.is_live value ~pos
+            then aux t ~pos (DLL.next cell)
+            else (
+              Interval.DLL.insert_sorted t.inactive_dll value;
+              let next = DLL.next cell in
+              DLL.delete_curr cell;
+              aux t ~pos next))
+          else DLL.cut cell
+      in
+      aux t ~pos (DLL.hd_cell l)
 
-  let rec release_expired_inactive t ~pos l =
-    match l with
-    | [] -> []
-    | hd :: tl ->
-      if hd.Interval.end_ >= pos
-      then (
-        Interval.remove_expired hd ~pos;
-        if not (Interval.is_live hd ~pos)
-        then hd :: release_expired_inactive t ~pos tl
-        else (
-          t.active <- Interval.List.insert_sorted t.active hd;
-          release_expired_inactive t ~pos tl))
-      else []
+    let release_expired_inactive (t : t) ~(pos : int) (l : Interval.t DLL.t) :
+        unit =
+      let rec aux t ~pos curr =
+        match curr with
+        | None -> ()
+        | Some cell ->
+          let value = DLL.value cell in
+          if value.Interval.end_ >= pos
+          then (
+            Interval.remove_expired value ~pos;
+            if not (Interval.is_live value ~pos)
+            then aux t ~pos (DLL.next cell)
+            else (
+              Interval.DLL.insert_sorted t.active_dll value;
+              let next = DLL.next cell in
+              DLL.delete_curr cell;
+              aux t ~pos next))
+          else DLL.cut cell
+      in
+      aux t ~pos (DLL.hd_cell l)
+  end
 
   let release_expired_intervals t ~pos =
-    t.fixed <- Interval.List.release_expired_fixed t.fixed ~pos;
-    t.active <- release_expired_active t ~pos t.active;
-    t.inactive <- release_expired_inactive t ~pos t.inactive
+    Interval.DLL.release_expired_fixed t.fixed_dll ~pos;
+    DLL.release_expired_active t ~pos t.active_dll;
+    DLL.release_expired_inactive t ~pos t.inactive_dll
 end
 
 let log_interval ~indent ~kind (interval : Interval.t) =
@@ -265,6 +329,6 @@ let log_interval ~indent ~kind (interval : Interval.t) =
       Buffer.add_string ranges (Printf.sprintf "[%d..%d]" begin_ end_));
   log ~indent:(succ indent) "%s" (Buffer.contents ranges)
 
-let log_intervals ~indent ~kind (intervals : Interval.t list) =
-  List.iter intervals ~f:(fun (interval : Interval.t) ->
+let log_interval_dll ~indent ~kind (intervals : Interval.t DLL.t) =
+  DLL.iter intervals ~f:(fun (interval : Interval.t) ->
       log_interval ~indent ~kind interval)
